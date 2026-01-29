@@ -1,0 +1,37 @@
+# Comprehensive Integration Test Dependencies
+# Neutron + Cerebro + Spectre + Phantom
+
+# ========================================
+# Testing Framework
+# ========================================
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-timeout>=2.1.0
+pytest-xdist>=3.3.0  # Parallel test execution
+
+# ========================================
+# HTTP Client
+# ========================================
+httpx>=0.24.1  # Async HTTP client for API testing
+
+# ========================================
+# Event Bus (Optional - Scenario 9)
+# ========================================
+nats-py>=2.3.0  # NATS client for Spectre integration
+# Note: Install with: pip install nats-py
+# If not installed, Scenario 9 will be skipped
+
+# ========================================
+# Performance & Monitoring
+# ========================================
+psutil>=5.9.0  # System metrics (for enhanced mock agent)
+
+# ========================================
+# Data Validation
+# ========================================
+pydantic>=2.0.0  # Data validation for bundles
+
+# ========================================
+# Utilities
+# ========================================
+python-dotenv>=1.0.0  # Environment configuration

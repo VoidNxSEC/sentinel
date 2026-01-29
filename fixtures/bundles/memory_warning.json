@@ -1,0 +1,76 @@
+{
+  "timestamp": 1737491100,
+  "hostname": "test-memory-pressure",
+  "metrics": {
+    "cpu": {
+      "usage_percent": 65.0,
+      "cores": [68, 62, 64, 66],
+      "temperature_celsius": 68.0
+    },
+    "memory": {
+      "total_bytes": 16000000000,
+      "used_bytes": 13920000000,
+      "usage_percent": 87.0,
+      "available_bytes": 2080000000,
+      "swap_total_bytes": 8000000000,
+      "swap_used_bytes": 2400000000,
+      "swap_usage_percent": 30.0
+    },
+    "thermal": {
+      "max_temp_celsius": 68.0,
+      "avg_temp_celsius": 66.0,
+      "critical_threshold": 75.0,
+      "cores": [68, 67, 66, 65]
+    },
+    "disk": {
+      "total_bytes": 512000000000,
+      "used_bytes": 409600000000,
+      "usage_percent": 80.0
+    }
+  },
+  "alerts": [
+    {
+      "timestamp": 1737491100,
+      "severity": "Warning",
+      "category": "Memory",
+      "message": "Memory usage high: 87%",
+      "details": "Available memory below 15%. Consider closing applications or upgrading RAM.",
+      "source": "memory_monitor"
+    },
+    {
+      "timestamp": 1737491100,
+      "severity": "Info",
+      "category": "Swap",
+      "message": "Swap usage: 30%",
+      "details": "System is using swap space. Performance may be degraded.",
+      "source": "memory_monitor"
+    }
+  ],
+  "logs": [
+    {
+      "timestamp": 1737491050,
+      "level": "INFO",
+      "message": "Memory usage: 82%"
+    },
+    {
+      "timestamp": 1737491080,
+      "level": "WARNING",
+      "message": "Memory usage high: 85%"
+    },
+    {
+      "timestamp": 1737491100,
+      "level": "WARNING",
+      "message": "Memory usage critical: 87%"
+    }
+  ],
+  "context": {
+    "workload": "development_environment",
+    "uptime_seconds": 7200,
+    "load_average": [3.5, 3.2, 2.9],
+    "top_processes": [
+      {"name": "node", "memory_mb": 2048},
+      {"name": "rust-analyzer", "memory_mb": 1536},
+      {"name": "chrome", "memory_mb": 1024}
+    ]
+  }
+}

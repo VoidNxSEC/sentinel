@@ -1,0 +1,97 @@
+{
+  "timestamp": 1737491200,
+  "hostname": "test-multi-alert-crisis",
+  "metrics": {
+    "cpu": {
+      "usage_percent": 88.0,
+      "cores": [92, 88, 86, 85],
+      "temperature_celsius": 81.0
+    },
+    "memory": {
+      "total_bytes": 16000000000,
+      "used_bytes": 14080000000,
+      "usage_percent": 88.0,
+      "available_bytes": 1920000000,
+      "swap_total_bytes": 8000000000,
+      "swap_used_bytes": 4800000000,
+      "swap_usage_percent": 60.0
+    },
+    "thermal": {
+      "max_temp_celsius": 81.0,
+      "avg_temp_celsius": 78.0,
+      "critical_threshold": 75.0,
+      "cores": [81, 79, 78, 77]
+    },
+    "disk": {
+      "total_bytes": 512000000000,
+      "used_bytes": 460800000000,
+      "usage_percent": 90.0
+    }
+  },
+  "alerts": [
+    {
+      "timestamp": 1737491200,
+      "severity": "Critical",
+      "category": "Thermal",
+      "message": "Temperature critical: 81°C",
+      "details": "CPU temperature dangerously high. System may throttle or shutdown.",
+      "source": "thermal_monitor"
+    },
+    {
+      "timestamp": 1737491200,
+      "severity": "Warning",
+      "category": "Memory",
+      "message": "Memory usage critical: 88%",
+      "details": "Memory pressure high. OOM killer may activate.",
+      "source": "memory_monitor"
+    },
+    {
+      "timestamp": 1737491200,
+      "severity": "Warning",
+      "category": "Swap",
+      "message": "Swap usage high: 60%",
+      "details": "Heavy swap usage detected. System performance severely degraded.",
+      "source": "memory_monitor"
+    },
+    {
+      "timestamp": 1737491200,
+      "severity": "Info",
+      "category": "Disk",
+      "message": "Disk usage high: 90%",
+      "details": "Disk space running low. Consider cleaning up.",
+      "source": "disk_monitor"
+    }
+  ],
+  "logs": [
+    {
+      "timestamp": 1737491150,
+      "level": "WARNING",
+      "message": "Multiple subsystems under stress"
+    },
+    {
+      "timestamp": 1737491170,
+      "level": "ERROR",
+      "message": "CPU temperature: 79°C, Memory: 86%"
+    },
+    {
+      "timestamp": 1737491190,
+      "level": "CRITICAL",
+      "message": "System stress level: HIGH"
+    },
+    {
+      "timestamp": 1737491200,
+      "level": "CRITICAL",
+      "message": "Multiple critical alerts triggered"
+    }
+  ],
+  "context": {
+    "workload": "compilation + docker_build",
+    "uptime_seconds": 1800,
+    "load_average": [12.5, 10.8, 9.2],
+    "top_processes": [
+      {"name": "cc1plus", "cpu_percent": 95, "memory_mb": 1024},
+      {"name": "docker", "cpu_percent": 85, "memory_mb": 2048},
+      {"name": "nix-daemon", "cpu_percent": 78, "memory_mb": 512}
+    ]
+  }
+}

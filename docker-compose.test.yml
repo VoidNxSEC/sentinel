@@ -1,0 +1,202 @@
+version: '3.8'
+
+# Comprehensive Integration Test Environment
+# Neutron + Cerebro + Spectre + Phantom
+# Purpose: E2E testing, chaos engineering, compliance validation
+
+services:
+  # ========================================
+  # PHANTOM - Judge API (Core Integration)
+  # ========================================
+  phantom:
+    build:
+      context: ../phantom
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+
+        # Install system dependencies
+        RUN apt-get update && apt-get install -y \
+            curl \
+            && rm -rf /var/lib/apt/lists/*
+
+        # Copy project files
+        COPY pyproject.toml .
+        COPY src/ src/
+
+        # Install Python dependencies
+        RUN pip install --no-cache-dir -e .
+
+        # Create audit logs directory
+        RUN mkdir -p /tmp/phantom-bundles
+
+        # Expose port
+        EXPOSE 8000
+
+        # Health check endpoint (to be implemented in judge_api.py)
+        HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+          CMD curl -f http://localhost:8000/health || exit 1
+
+        # Start FastAPI server
+        CMD ["uvicorn", "phantom.api.judge_api:app", "--host", "0.0.0.0", "--port", "8000"]
+
+    container_name: test-phantom
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app/src:/app/../neutron/src
+      - KNOWLEDGE_BASE_PATH=/app/knowledge/knowledge_base.json
+      - NEUTRON_ENABLED=true
+      - LOG_LEVEL=DEBUG
+      - AUDIT_LOG_DIR=/tmp/phantom-bundles
+    volumes:
+      # Mount knowledge base (ADRs)
+      - ../adr-ledger/knowledge:/app/knowledge:ro
+      # Mount source code for hot reload during development
+      - ../phantom/src:/app/src:ro
+      # Mount audit logs for verification
+      - phantom-audit-logs:/tmp/phantom-bundles
+    networks:
+      - test-network
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ========================================
+  # CEREBRO - RAG Engine (Knowledge Base)
+  # ========================================
+  cerebro:
+    build:
+      context: ../cerebro
+      dockerfile: Dockerfile
+    container_name: test-cerebro
+    ports:
+      - "8002:8000"
+    environment:
+      - PYTHONPATH=/app/src
+      - VERTEX_AI_ENABLED=false  # Disable for tests
+      - EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - KNOWLEDGE_BASE_PATH=/app/knowledge/knowledge_base.json
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ../adr-ledger/knowledge:/app/knowledge:ro
+      - ../cerebro/src:/app/src:ro
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ========================================
+  # SPECTRE - Event Bus (NATS)
+  # ========================================
+  nats:
+    image: nats:2.10-alpine
+    container_name: test-spectre-nats
+    ports:
+      - "4222:4222"  # Client connections
+      - "8222:8222"  # HTTP monitoring
+      - "6222:6222"  # Cluster routing
+    command:
+      - "--http_port=8222"
+      - "--jetstream"
+      - "--store_dir=/data"
+      - "--max_payload=8388608"  # 8MB max payload
+    volumes:
+      - nats-data:/data
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ========================================
+  # NEUTRON - ML Pipeline (Temporal + MLflow)
+  # ========================================
+  # NOTE: Neutron is complex with Temporal/MLflow dependencies
+  # For integration tests, we'll mock Neutron components
+  # or run them as optional services
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: test-neutron-postgres
+    environment:
+      POSTGRES_USER: neutron
+      POSTGRES_PASSWORD: neutron_test
+      POSTGRES_DB: neutron_test
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neutron"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Temporal (optional - heavy service)
+  # Uncomment if needed for full Neutron testing
+  # temporal:
+  #   image: temporalio/auto-setup:1.22.4
+  #   container_name: test-neutron-temporal
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   environment:
+  #     - DB=postgresql
+  #     - DB_PORT=5432
+  #     - POSTGRES_USER=neutron
+  #     - POSTGRES_PWD=neutron_test
+  #     - POSTGRES_SEEDS=postgres
+  #   ports:
+  #     - "7234:7233"
+  #   networks:
+  #     - test-network
+
+  # MLflow (optional)
+  # mlflow:
+  #   image: ghcr.io/mlflow/mlflow:v2.10.2
+  #   container_name: test-neutron-mlflow
+  #   command: >
+  #     mlflow server --backend-store-uri sqlite:///mlflow/mlflow.db
+  #     --default-artifact-root /mlflow/artifacts
+  #     --host 0.0.0.0 --port 5001
+  #   ports:
+  #     - "5002:5001"
+  #   volumes:
+  #     - mlflow-data:/mlflow
+  #   networks:
+  #     - test-network
+
+# ========================================
+# Networks
+# ========================================
+networks:
+  test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/16
+
+# ========================================
+# Volumes
+# ========================================
+volumes:
+  phantom-audit-logs:
+    driver: local
+  nats-data:
+    driver: local
+  postgres-data:
+    driver: local
+  # mlflow-data:
+  #   driver: local

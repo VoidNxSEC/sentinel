@@ -1,0 +1,44 @@
+{
+  "timestamp": 1737491300,
+  "hostname": "test-normal-operation",
+  "metrics": {
+    "cpu": {
+      "usage_percent": 35.0,
+      "cores": [38, 34, 32, 36],
+      "temperature_celsius": 55.0
+    },
+    "memory": {
+      "total_bytes": 16000000000,
+      "used_bytes": 8000000000,
+      "usage_percent": 50.0,
+      "available_bytes": 8000000000,
+      "swap_total_bytes": 8000000000,
+      "swap_used_bytes": 0,
+      "swap_usage_percent": 0.0
+    },
+    "thermal": {
+      "max_temp_celsius": 55.0,
+      "avg_temp_celsius": 52.0,
+      "critical_threshold": 75.0,
+      "cores": [55, 53, 51, 50]
+    },
+    "disk": {
+      "total_bytes": 512000000000,
+      "used_bytes": 256000000000,
+      "usage_percent": 50.0
+    }
+  },
+  "alerts": [],
+  "logs": [
+    {
+      "timestamp": 1737491300,
+      "level": "INFO",
+      "message": "All systems normal"
+    }
+  ],
+  "context": {
+    "workload": "idle",
+    "uptime_seconds": 86400,
+    "load_average": [1.2, 1.1, 1.0]
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "timestamp": 1737491000,
+  "hostname": "test-thermal-spike",
+  "metrics": {
+    "cpu": {
+      "usage_percent": 92.5,
+      "cores": [95, 90, 92, 91],
+      "temperature_celsius": 82.0
+    },
+    "memory": {
+      "total_bytes": 16000000000,
+      "used_bytes": 14500000000,
+      "usage_percent": 90.6,
+      "available_bytes": 1500000000
+    },
+    "thermal": {
+      "max_temp_celsius": 82.0,
+      "avg_temp_celsius": 78.5,
+      "critical_threshold": 75.0,
+      "cores": [82, 79, 80, 78]
+    },
+    "disk": {
+      "total_bytes": 512000000000,
+      "used_bytes": 384000000000,
+      "usage_percent": 75.0
+    }
+  },
+  "alerts": [
+    {
+      "timestamp": 1737491000,
+      "severity": "Critical",
+      "category": "Thermal",
+      "message": "Temperature critical: 82°C",
+      "details": "CPU temperature exceeds safe threshold (75°C). Immediate action required.",
+      "source": "thermal_monitor"
+    }
+  ],
+  "logs": [
+    {
+      "timestamp": 1737490950,
+      "level": "WARNING",
+      "message": "CPU temperature rising: 76°C"
+    },
+    {
+      "timestamp": 1737490980,
+      "level": "ERROR",
+      "message": "CPU temperature exceeds threshold: 80°C"
+    },
+    {
+      "timestamp": 1737491000,
+      "level": "CRITICAL",
+      "message": "CPU temperature critical: 82°C"
+    }
+  ],
+  "context": {
+    "workload": "nixos-rebuild switch",
+    "uptime_seconds": 3600,
+    "load_average": [8.5, 7.2, 6.1]
+  }
+}
