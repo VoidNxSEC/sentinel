@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WiX installer configuration for voidnxlabs Windows MSI.
+  Build with: cargo wix (for Rust crates) or wix.exe
+
+  Usage:
+    cargo install cargo-wix
+    cd ai-agent-os && cargo wix --nocapture
+
+  Or with wix toolset:
+    wix build packaging/windows/wix-config.wxs -out dist/windows/voidnxlabs.msi
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package
+    Name="voidnxlabs"
+    Version="0.1.0"
+    Manufacturer="VoidNxSEC"
+    Language="1033"
+    Codepage="1252"
+    UpgradeCode="E4A1F2B3-C5D6-47E8-9F0A-1B2C3D4E5F60">
+
+    <MajorUpgrade
+      Schedule="afterInstallInitialize"
+      DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Feature Id="ProductFeature" Title="voidnxlabs" Level="1">
+      <ComponentGroupRef Id="CoreComponents" />
+      <ComponentGroupRef Id="ServiceComponents" />
+    </Feature>
+
+    <UIRef Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+
+    <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />
+
+  </Package>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="voidnxlabs">
+          <Directory Id="BinDir" Name="bin" />
+          <Directory Id="ConfigDir" Name="config" />
+        </Directory>
+      </Directory>
+      <Directory Id="CommonAppDataFolder">
+        <Directory Id="VoidNxLabsDataDir" Name="voidnxlabs" />
+      </Directory>
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="CoreComponents" Directory="BinDir">
+
+      <Component Id="AiAgent" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+        <File Id="AiAgentExe"
+              Source="dist/windows/ai-agent-0.1.0-x86_64.exe"
+              Name="ai-agent.exe"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="SecureLLMBridge" Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
+        <File Id="SecureLLMExe"
+              Source="dist/windows/securellm-bridge-0.1.0-x86_64.exe"
+              Name="securellm-bridge.exe"
+              KeyPath="yes" />
+      </Component>
+
+    </ComponentGroup>
+
+    <ComponentGroup Id="ServiceComponents" Directory="ConfigDir">
+
+      <Component Id="EnvConfig" Guid="C3D4E5F6-A7B8-9012-CDEF-123456789012">
+        <File Id="EnvFile"
+              Source="packaging/windows/env.example"
+              Name="env.example"
+              KeyPath="yes" />
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\VoidNxSEC\voidnxlabs"
+                       Name="InstallDir"
+                       Type="string"
+                       Value="[INSTALLDIR]"
+                       KeyPath="no" />
+      </Component>
+
+    </ComponentGroup>
+  </Fragment>
+
+</Wix>
