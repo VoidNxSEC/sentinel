@@ -1,4 +1,4 @@
-name: 🧪 Comprehensive Integration Tests
+name: Integration Tests
 
 on:
   push:
@@ -11,7 +11,6 @@ on:
       - main
       - develop
   schedule:
-    # Run nightly at 2 AM UTC
     - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
@@ -30,96 +29,73 @@ env:
   POETRY_VERSION: '1.7.0'
 
 jobs:
-  # ========================================
-  # Job 1: Quick Tests (Fast Feedback)
-  # ========================================
   quick-tests:
-    name: 🚀 Quick Tests (E2E + Compliance)
+    name: Quick Tests (E2E + Compliance)
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' || github.event.inputs.test_mode == 'quick'
 
     steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      - name: 📦 Install Poetry
-        uses: snok/install-poetry@v1
+      - uses: snok/install-poetry@v1
         with:
           version: ${{ env.POETRY_VERSION }}
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      - name: 📚 Load cached dependencies
-        id: cached-poetry-dependencies
-        uses: actions/cache@v3
+      - name: Load cached dependencies
+        id: cached-deps
+        uses: actions/cache@v4
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
 
-      - name: 🔧 Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: |
-          cd integration-tests
-          poetry install --no-interaction --no-root
+      - name: Install dependencies
+        if: steps.cached-deps.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root -E nats
 
-      - name: 🐳 Start Docker services
+      - name: Start test services
         run: |
-          cd integration-tests
-          docker-compose -f docker-compose.test.yml up -d
+          docker compose -f docker-compose.test.yml up -d
           sleep 30
 
-      - name: 🏥 Health check services
+      - name: Health check
         run: |
-          curl -f http://localhost:8000/health || echo "Phantom not ready"
+          curl -f http://localhost:8000/health || echo "phantom not ready"
           curl -f http://localhost:8222/healthz || echo "NATS not ready"
 
-      - name: 🧪 Run quick tests
+      - name: Run quick tests
         run: |
-          cd integration-tests
           poetry run pytest test_comprehensive_integration.py \
-            -v \
-            -m "not slow" \
+            -v -m "not slow" \
             --junitxml=reports/junit-quick.xml \
             --tb=short
 
-      - name: 📊 Upload test results
+      - name: Upload results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: quick-test-results
-          path: integration-tests/reports/
+          path: reports/
 
-      - name: 📈 Publish test report
-        uses: dorny/test-reporter@v1
+      - name: Cleanup
         if: always()
-        with:
-          name: Quick Test Results
-          path: integration-tests/reports/junit-*.xml
-          reporter: java-junit
+        run: docker compose -f docker-compose.test.yml down -v
 
-      - name: 🧹 Cleanup
-        if: always()
-        run: |
-          cd integration-tests
-          docker-compose -f docker-compose.test.yml down -v
-
-  # ========================================
-  # Job 2: Full Integration Tests
-  # ========================================
   full-integration-tests:
-    name: 🔬 Full Integration Suite
+    name: Full Integration — ${{ matrix.test-category }}
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.inputs.test_mode == 'full'
 
     strategy:
+      fail-fast: false
       matrix:
         test-category:
           - e2e
@@ -128,213 +104,218 @@ jobs:
           - chaos
 
     steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: 📦 Install Poetry
-        uses: snok/install-poetry@v1
+      - uses: snok/install-poetry@v1
         with:
           version: ${{ env.POETRY_VERSION }}
 
-      - name: 🔧 Install dependencies
-        run: |
-          cd integration-tests
-          poetry install --no-interaction
-          poetry install -E nats
+      - name: Install dependencies
+        run: poetry install --no-interaction -E nats
 
-      - name: 🐳 Start Docker services
+      - name: Start test services
         run: |
-          cd integration-tests
-          docker-compose -f docker-compose.test.yml up -d
+          docker compose -f docker-compose.test.yml up -d
           sleep 30
 
-      - name: 🧪 Run ${{ matrix.test-category }} tests
+      - name: Run ${{ matrix.test-category }} tests
         run: |
-          cd integration-tests
-          poetry run pytest test_comprehensive_integration.py \
-            -v \
-            -m "${{ matrix.test-category }}" \
+          poetry run pytest \
+            test_comprehensive_integration.py \
+            scenarios/ chaos/ performance/ \
+            -v -m "${{ matrix.test-category }}" \
             --junitxml=reports/junit-${{ matrix.test-category }}.xml \
             --tb=short
 
-      - name: 📊 Upload test results
+      - name: Upload results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ${{ matrix.test-category }}-test-results
-          path: integration-tests/reports/
+          path: reports/
 
-      - name: 📈 Publish test report
-        uses: dorny/test-reporter@v1
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.test.yml logs
+
+      - name: Cleanup
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v
+
+  scenario-tests:
+    name: Scenario Tests — ${{ matrix.scenario }}
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.inputs.test_mode == 'full'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - spectre-e2e
+          - phantom-e2e
+          - ai-agent-e2e
+          - securellm-e2e
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction -E nats
+
+      - name: Start core services (unified compose)
+        run: |
+          cd ..
+          docker compose --profile core up -d
+          sleep 30
+
+      - name: Health check core services
+        run: |
+          curl -f http://localhost:8222/healthz
+          curl -f http://localhost:8008/health || true
+          curl -f http://localhost:8080/health || true
+
+      - name: Run ${{ matrix.scenario }} scenario
+        run: |
+          poetry run pytest \
+            scenarios/test_${{ matrix.scenario | replace('-', '_') }}.py \
+            -v -m e2e \
+            --junitxml=reports/junit-${{ matrix.scenario }}.xml \
+            --tb=short
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ${{ matrix.test-category }} Test Results
-          path: integration-tests/reports/junit-*.xml
-          reporter: java-junit
+          name: scenario-${{ matrix.scenario }}-results
+          path: reports/
 
-      - name: 📝 Service logs (on failure)
-        if: failure()
-        run: |
-          cd integration-tests
-          docker-compose -f docker-compose.test.yml logs
-
-      - name: 🧹 Cleanup
+      - name: Cleanup
         if: always()
         run: |
-          cd integration-tests
-          docker-compose -f docker-compose.test.yml down -v
+          cd ..
+          docker compose --profile core down -v
 
-  # ========================================
-  # Job 3: Chaos Engineering Tests
-  # ========================================
   chaos-tests:
-    name: 💥 Chaos Engineering
+    name: Chaos Engineering
     runs-on: ubuntu-latest
     if: github.event.inputs.test_mode == 'chaos-only' || github.event_name == 'schedule'
 
     steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: 📦 Install Poetry
-        uses: snok/install-poetry@v1
+      - uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
 
-      - name: 🔧 Install dependencies
-        run: |
-          cd integration-tests
-          poetry install
+      - name: Install dependencies
+        run: poetry install --no-interaction -E nats
 
-      - name: 🐳 Start services
+      - name: Start core services
         run: |
-          cd integration-tests
-          docker-compose -f docker-compose.test.yml up -d
+          cd ..
+          docker compose --profile core up -d
           sleep 30
 
-      - name: 💥 Run chaos tests
+      - name: Run chaos tests
         run: |
-          cd integration-tests
-          ./run_comprehensive_test.sh --chaos-only
+          poetry run pytest chaos/ \
+            -v -m chaos \
+            --junitxml=reports/junit-chaos.xml \
+            --tb=short
 
-      - name: 📊 Upload chaos test results
+      - name: Upload results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: chaos-test-results
-          path: integration-tests/reports/
+          path: reports/
 
-      - name: 🧹 Cleanup
+      - name: Cleanup
         if: always()
         run: |
-          cd integration-tests
-          docker-compose -f docker-compose.test.yml down -v
+          cd ..
+          docker compose --profile core down -v
 
-  # ========================================
-  # Job 4: Performance Benchmarks
-  # ========================================
   performance-benchmarks:
-    name: 📊 Performance Benchmarks
+    name: Performance Benchmarks
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: 📦 Install Poetry
-        uses: snok/install-poetry@v1
+      - uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
 
-      - name: 🔧 Install dependencies
-        run: |
-          cd integration-tests
-          poetry install -E nats
+      - name: Install dependencies
+        run: poetry install --no-interaction -E nats
 
-      - name: 🐳 Start services
+      - name: Start core services
         run: |
-          cd integration-tests
-          docker-compose -f docker-compose.test.yml up -d
+          cd ..
+          docker compose --profile core up -d
           sleep 30
 
-      - name: 📊 Run performance tests
+      - name: Run performance tests
         run: |
-          cd integration-tests
-          poetry run pytest test_comprehensive_integration.py \
-            -v \
-            -m performance \
-            --junitxml=reports/junit-performance.xml
+          poetry run pytest performance/ \
+            -v -m performance \
+            --junitxml=reports/junit-performance.xml \
+            --tb=short
 
-      - name: 💾 Save benchmark results
+      - name: Save benchmark results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: performance-benchmarks
-          path: integration-tests/reports/
+          path: reports/
 
-      - name: 📈 Comment PR with performance results
-        uses: actions/github-script@v7
-        if: github.event_name == 'pull_request'
-        with:
-          script: |
-            const fs = require('fs');
-            const report = fs.readFileSync('integration-tests/reports/performance-summary.txt', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## 📊 Performance Benchmark Results\n\n\`\`\`\n${report}\n\`\`\``
-            });
-
-      - name: 🧹 Cleanup
+      - name: Cleanup
         if: always()
         run: |
-          cd integration-tests
-          docker-compose -f docker-compose.test.yml down -v
+          cd ..
+          docker compose --profile core down -v
 
-  # ========================================
-  # Job 5: Summary & Badge Update
-  # ========================================
   test-summary:
-    name: 📋 Test Summary
+    name: Test Summary
     runs-on: ubuntu-latest
     needs: [quick-tests, full-integration-tests]
     if: always()
 
     steps:
-      - name: 📥 Download all test results
+      - name: Download all test results
         uses: actions/download-artifact@v4
         with:
           path: all-test-results
 
-      - name: 📊 Generate summary
+      - name: Generate summary
         run: |
-          echo "## 🧪 Integration Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Integration Test Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Category | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Quick Tests | ✅ PASSED |" >> $GITHUB_STEP_SUMMARY
-          echo "| E2E Tests | ✅ PASSED |" >> $GITHUB_STEP_SUMMARY
-          echo "| Compliance | ✅ PASSED |" >> $GITHUB_STEP_SUMMARY
-          echo "| Performance | ✅ PASSED |" >> $GITHUB_STEP_SUMMARY
-          echo "| Chaos Engineering | ✅ PASSED |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Total Scenarios**: 10/10 ✅" >> $GITHUB_STEP_SUMMARY
-          echo "**Components Validated**: 4/4 ✅" >> $GITHUB_STEP_SUMMARY
-
-      - name: 🏆 Update status badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          echo "Integration tests completed successfully!"
+          echo "| Category | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+          for dir in all-test-results/*/; do
+            name=$(basename "$dir")
+            echo "| $name | ✅ |" >> $GITHUB_STEP_SUMMARY
+          done
