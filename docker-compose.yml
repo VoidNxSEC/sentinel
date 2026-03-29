@@ -1,0 +1,65 @@
+services:
+  nats:
+    image: nats:2.10-alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["--http_port=8222", "--jetstream", "--store_dir=/data"]
+    volumes:
+      - nats-data:/data
+    networks:
+      - spectre-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  phantom-api:
+    build:
+      context: ./phantom
+      dockerfile: Dockerfile
+    ports:
+      - "8008:8000"
+    environment:
+      NATS_URL: nats://nats:4222
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - spectre-net
+
+  owasaka:
+    build:
+      context: ./owasaka
+      dockerfile: Dockerfile
+    environment:
+      NATS_URL: nats://nats:4222
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - spectre-net
+    cap_add:
+      - NET_RAW
+
+  spooknix:
+    build:
+      context: ./spooknix
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    profiles:
+      - gpu
+
+networks:
+  spectre-net:
+    driver: bridge
+
+volumes:
+  nats-data:
