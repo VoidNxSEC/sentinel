@@ -252,10 +252,14 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
   (`crates/api-server/src/services/nats.rs`)
 - [x] Metrics endpoint wired via `prometheus::TextEncoder` (`routes/metrics.rs`)
 
-### 6.3 — ml-ops-api
-- [ ] NATS events: `inference.request.v1` / `inference.response.v1`
-- [ ] Wire as provider in securellm-bridge routing (`ml-ops/{model}` prefix)
-- [ ] Fallback chain: local candle → ml-ops-api → securellm-bridge
+### 6.3 — ml-ops-api ✅
+- [x] NATS events: `inference.request.v1` / `inference.response.v1`
+  (`ml-ops-api/api/src/nats.rs` wired into AppState + inference handler)
+- [x] `MlOpsProvider` in securellm-bridge routing (`ml-ops/{model}` prefix)
+  (`crates/providers/src/ml_ops.rs` — OpenAI-compatible proxy, no API key)
+- [x] Config: `ML_OPS_ENABLED=true` + `ML_OPS_API_URL` env vars
+- [x] Circuit breaker: 3 failures → open, 120s timeout (GPU-aware)
+- [ ] Fallback chain orchestration (local candle → ml-ops-api → securellm-bridge) — M7
 
 ### 6.4 — E2E test suite ✅
 - [x] `sentinel/scenarios/test_ml_pipeline_e2e.py` — full pipeline: upload → ingest event →
