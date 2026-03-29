@@ -1,0 +1,314 @@
+---
+# voidnxlabs — Unified Infrastructure Compose (Sentinel Orchestrator)
+# GitHub: github.com/VoidNxSEC
+#
+# All service images are pulled from GHCR. Projects are imported via Nix flake
+# inputs for building — this compose is for running the full stack.
+#
+# Profiles:
+#   core          — nats, phantom-api, owasaka, ai-agent-os
+#   intelligence  — + cerebro, securellm-bridge, ml-ops-api
+#   gpu           — + spooknix (requires CUDA)
+#   observability — + prometheus, grafana, jaeger
+#   compliance    — + neotron (temporal + postgres)
+#   full          — all of the above
+#
+# Usage:
+#   docker compose -f docker-compose.unified.yml --profile core up -d
+#   docker compose -f docker-compose.unified.yml --profile core --profile intelligence up -d
+#   docker compose -f docker-compose.unified.yml --profile full up -d
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-ghcr: &ghcr-registry ghcr.io/voidnxsec
+
+services:
+  # ──────────────────────────────────────────────
+  # CORE
+  # ──────────────────────────────────────────────
+
+  nats:
+    image: nats:2.10-alpine
+    profiles: ["core", "intelligence", "gpu", "observability", "compliance", "full"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+      - "6222:6222"
+    command: ["-js", "-m", "8222", "--cluster_name", "spectre"]
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.10
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *default-logging
+    restart: unless-stopped
+
+  phantom-api:
+    image: ghcr.io/voidnxsec/phantom-api:latest
+    profiles: ["core", "intelligence", "gpu", "observability", "compliance", "full"]
+    ports:
+      - "8008:8000"
+    environment:
+      - NATS_URL=nats://nats:4222
+      - PHANTOM_PORT=8000
+    env_file:
+      - .env
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.11
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+
+  owasaka:
+    image: ghcr.io/voidnxsec/owasaka:latest
+    profiles: ["core", "intelligence", "gpu", "observability", "compliance", "full"]
+    ports:
+      - "8080:8080"
+    environment:
+      - NATS_URL=nats://nats:4222
+    env_file:
+      - .env
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.12
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+    cap_add:
+      - NET_RAW
+
+  ai-agent-os:
+    image: ghcr.io/voidnxsec/ai-agent-os:latest
+    profiles: ["core", "intelligence", "gpu", "observability", "compliance", "full"]
+    environment:
+      - NATS_URL=nats://nats:4222
+    env_file:
+      - .env
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.13
+    logging: *default-logging
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # INTELLIGENCE
+  # ──────────────────────────────────────────────
+
+  cerebro:
+    image: ghcr.io/voidnxsec/cerebro:latest
+    profiles: ["intelligence", "full"]
+    ports:
+      - "8002:8000"
+    environment:
+      - NATS_URL=nats://nats:4222
+    env_file:
+      - .env
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.20
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+
+  securellm-bridge:
+    image: ghcr.io/voidnxsec/securellm-bridge:latest
+    profiles: ["intelligence", "full"]
+    ports:
+      - "8081:8080"
+    environment:
+      - NATS_URL=nats://nats:4222
+    env_file:
+      - .env
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.21
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+
+  ml-ops-api:
+    image: ghcr.io/voidnxsec/ml-ops-api:latest
+    profiles: ["intelligence", "full"]
+    ports:
+      - "8083:8080"
+    environment:
+      - NATS_URL=nats://nats:4222
+    env_file:
+      - .env
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.22
+    logging: *default-logging
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # GPU
+  # ──────────────────────────────────────────────
+
+  spooknix:
+    image: ghcr.io/voidnxsec/spooknix:latest
+    profiles: ["gpu", "full"]
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_SIZE=${MODEL_SIZE:-large-v3}
+      - HF_TOKEN=${HF_TOKEN:-}
+    env_file:
+      - .env
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.30
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    logging: *default-logging
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # OBSERVABILITY
+  # ──────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    profiles: ["observability", "full"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data:/prometheus
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.40
+    logging: *default-logging
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.3.3
+    profiles: ["observability", "full"]
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.41
+    logging: *default-logging
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.55
+    profiles: ["observability", "full"]
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.42
+    logging: *default-logging
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # COMPLIANCE
+  # ──────────────────────────────────────────────
+
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    profiles: ["compliance", "full"]
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-voidnx}
+      - POSTGRES_DB=neotron
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.50
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *default-logging
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5.17
+    profiles: ["compliance", "full"]
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-voidnx}
+    volumes:
+      - neo4j-data:/data
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.51
+    logging: *default-logging
+    restart: unless-stopped
+
+networks:
+  spectre-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  postgres-data:
+  neo4j-data:

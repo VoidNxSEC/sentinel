@@ -1,0 +1,29 @@
+# Global owners
+* @kernelcore
+
+# Core infrastructure
+docker-compose.yml @kernelcore
+.github/ @kernelcore
+
+# Project ownership
+spectre/ @kernelcore
+owasaka/ @kernelcore
+phantom/ @kernelcore
+cerebro/ @kernelcore
+ai-agent-os/ @kernelcore
+securellm-bridge/ @kernelcore
+securellm-mcp/ @kernelcore
+neoland/ @kernelcore
+spooknix/ @kernelcore
+sentinel/ @kernelcore
+neotron/ @kernelcore
+cortex-desktop/ @kernelcore
+phantom-soc/ @kernelcore
+phantom-nx/ @kernelcore
+ml-ops-api/ @kernelcore
+
+# Packaging
+packaging/ @kernelcore
+
+# ADR governance
+adr-ledger/ @kernelcore
