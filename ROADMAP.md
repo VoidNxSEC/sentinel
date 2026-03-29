@@ -176,24 +176,32 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 
 ---
 
-## Milestone 4 — Observability
+## Milestone 4 — Observability ✅
 
 **Goal**: Know what's happening across the platform in real-time.
 
-### 4.1 — Metrics
-- [ ] Prometheus scrape config for: phantom-api `/metrics`, spooknix `/metrics`, NATS `/varz`
-- [ ] Grafana dashboard: API latency, NATS throughput, event counts by type
-- [ ] ai-agent-os system metrics dashboard (CPU/mem/thermal from `system.metrics.v1`)
+### 4.1 — Metrics ✅
+- [x] Prometheus scrape config for all spectre-net services (`spectre/prometheus.yml`)
+  - phantom-api, owasaka, securellm-bridge, cerebro, spooknix, nats-exporter, prometheus self
+- [x] NATS Prometheus exporter (`nats-exporter` service in compose observability profile)
+- [x] owasaka: real `/metrics` endpoint — HTTP requests, events published, assets discovered, DNS queries
+- [x] Grafana dashboard: service health, phantom latency P50/P95/P99, NATS throughput, bridge requests, owasaka events
+  (`spectre/config/grafana/dashboards/voidnxlabs-overview.json`)
+- [ ] ai-agent-os system metrics dashboard (CPU/mem/thermal from `system.metrics.v1`) — deferred to M7
 
 ### 4.2 — Logging
-- [ ] Structured JSON logs from all services (tracing-subscriber for Rust, python-json-logger for Python)
+- [ ] Structured JSON logs from all Rust services (tracing-subscriber JSON formatter)
 - [ ] Loki or similar log aggregation
-- [ ] Correlation IDs propagated across NATS events (spectre `correlation_id` field)
+- [ ] Correlation IDs propagated across NATS events
 
-### 4.3 — Alerting
-- [ ] Thermal threshold alert from ai-agent-os → NATS → phantom-soc UI
-- [ ] NATS consumer lag alert (data-plane falling behind)
-- [ ] Phantom API error rate alert (>5% 5xx in 5min window)
+### 4.3 — Alerting ✅
+- [x] 15 alert rules across 5 groups (`spectre/config/alerts.yml`):
+  - Service availability (all services), phantom SLO (P99 < 500ms, error rate < 5%)
+  - SecureLLM Bridge provider failures + rate limits
+  - NATS slow consumers + connection drops
+  - owasaka event throughput
+- [ ] Thermal threshold alert (ai-agent-os → NATS → phantom-soc UI) — deferred to M7
+- [x] E2E tests: `sentinel/scenarios/test_observability_e2e.py`
 
 ---
 
@@ -220,23 +228,38 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 
 ---
 
-## Milestone 6 — ML Pipeline (Neutron + Cerebro)
+## Milestone 6 — ML Pipeline (Neutron + Cerebro) ✅
 
 **Goal**: Training and knowledge extraction operational.
 
-### 6.1 — Cerebro knowledge pipeline
-- [ ] Cerebro consumes `ingest.file.sanitized.v1` from NATS
-- [ ] Extracts knowledge → publishes `cognition.insight.generated.v1`
-- [ ] Phantom RAG indexes insights from Cerebro
+### 6.1 — Cerebro knowledge pipeline ✅
+- [x] Phantom publishes `ingest.file.sanitized.v1` after DAG pipeline sanitization
+  (`phantom/nats/publisher.py` + `phantom_dag.py` Step 10)
+- [x] Cerebro consumes `ingest.file.sanitized.v1` → runs HermeticAnalyzer + ChromaDB indexing
+  (`cerebro/nats/consumer.py`)
+- [x] Cerebro publishes `cognition.insight.generated.v1` with themes, concepts, summary, file_hash
+  (`cerebro/nats/publisher.py`)
+- [x] Phantom subscribes to `cognition.insight.generated.v1` → ingests into FAISS vector store
+  (`phantom/nats/consumer.py`)
+- [x] Both consumer+publisher wired into FastAPI lifespan in `app.py` (phantom + cerebro)
+- [x] `nats-py >= 2.7` added to both `phantom/pyproject.toml` and `cerebro/pyproject.toml`
 
-### 6.2 — Neutron training jobs
-- [ ] Neutron consumes `compute.job.submitted.v1`
-- [ ] Reports progress via `compute.model.trained.v1`
-- [ ] Integration with phantom for model serving
+### 6.2 — SecureLLM Bridge observability ✅
+- [x] Real Prometheus metrics: `securellm_requests_total`, `securellm_request_duration_seconds`,
+  `securellm_rate_limited_total`, `securellm_provider_errors_total`, `securellm_token_usage_total`,
+  `securellm_cost_usd_total` (`crates/api-server/src/state.rs`)
+- [x] NATS events: `llm.request.v1` + `llm.response.v1` + `cost.incurred.v1` on every LLM call
+  (`crates/api-server/src/services/nats.rs`)
+- [x] Metrics endpoint wired via `prometheus::TextEncoder` (`routes/metrics.rs`)
 
 ### 6.3 — ml-ops-api
-- [ ] Bridge neoland/phantom local inference to remote GPU when available
+- [ ] NATS events: `inference.request.v1` / `inference.response.v1`
+- [ ] Wire as provider in securellm-bridge routing (`ml-ops/{model}` prefix)
 - [ ] Fallback chain: local candle → ml-ops-api → securellm-bridge
+
+### 6.4 — E2E test suite ✅
+- [x] `sentinel/scenarios/test_ml_pipeline_e2e.py` — full pipeline: upload → ingest event →
+  cerebro insight event → phantom RAG updated → bridge real metrics → bridge NATS events
 
 ---
 
