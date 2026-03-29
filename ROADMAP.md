@@ -114,10 +114,25 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 
 **Goal**: Zero-trust between services. No plaintext secrets.
 
-### 3.1 — NATS Auth
-- [ ] Generate NATS NKey credentials per service (owasaka, ai-agent-os, phantom-soc, phantom)
-- [ ] Configure NATS server with per-subject ACLs (owasaka can only publish `network.*`, etc.)
-- [ ] Update all publishers/consumers to use NKey auth
+### 3.1 — NATS Auth ✅
+- [x] Generate NATS NKey credentials for all 6 services (owasaka, ai-agent-os, phantom, phantom-soc, cerebro, securellm-bridge)
+  - Seeds: `spectre/config/nkeys/<service>.nk` (gitignored, SOPS-managed in prod)
+  - Regenerate: `nix run .#nkeys-gen`
+- [x] NATS server config with per-subject ACLs (`spectre/config/nats-server.conf`)
+  - owasaka: publish `network.>` only
+  - ai-agent-os: publish `system.>` only
+  - phantom: publish `ingest.>` + `analysis.>`, subscribe `cognition.insight.generated.v1`
+  - phantom-soc: subscribe `network.>` + `system.>` (consumer-only, no publish)
+  - cerebro: publish `cognition.>`, subscribe `ingest.file.sanitized.v1`
+  - securellm-bridge: publish `llm.>` only
+- [x] owasaka `Publisher.Connect()` — NKey auth via `NATS_NKEY_SEED` / `NATS_NKEY_SEED_FILE`
+- [x] ai-agent-os `Agent::with_config()` — NKey auth via `NATS_NKEY_SEED` / `NATS_NKEY_SEED_FILE`
+- [x] docker-compose: `NATS_NKEY_SEED` env vars wired for all core services
+- [x] `.env.example`: all 6 `*_NKEY_SEED` vars documented
+- [x] flake: `nix run .#nats` loads auth config if present; `nix run .#nkeys-gen` regenerates all seeds
+- [x] Integration tests: `sentinel/scenarios/test_nats_auth.py` — connection auth, ACL allow/deny, cross-service flows
+- [ ] **Live validation**: run `pytest scenarios/test_nats_auth.py -m e2e` against NATS with auth config loaded
+- [ ] SOPS encryption of seed files (M3.3 — next)
 
 ### 3.2 — TLS everywhere
 - [ ] NATS TLS (mTLS between services)
