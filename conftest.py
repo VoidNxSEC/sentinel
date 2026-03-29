@@ -295,3 +295,59 @@ def pytest_collection_modifyitems(config, items):
         # Mark scenario tests as e2e
         if "scenarios" in str(item.fspath) or "test_comprehensive" in str(item.fspath):
             item.add_marker(pytest.mark.e2e)
+
+
+# ========================================
+# Production Stack Fixtures (port 8008)
+# ========================================
+
+@pytest.fixture
+async def phantom_api_client(docker_services):
+    """HTTP client for Phantom API on production port 8008."""
+    async with httpx.AsyncClient(
+        base_url="http://localhost:8008",
+        timeout=TIMEOUT_DEFAULT
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+async def owasaka_client(docker_services):
+    """HTTP client for Owasaka SIEM API."""
+    async with httpx.AsyncClient(
+        base_url="http://localhost:8080",
+        timeout=TIMEOUT_DEFAULT
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+async def securellm_client(docker_services):
+    """HTTP client for SecureLLM Bridge (host port 8081)."""
+    async with httpx.AsyncClient(
+        base_url="http://localhost:8081",
+        timeout=TIMEOUT_DEFAULT
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+def ai_agent_client(nats_url) -> str:
+    """NATS URL for subscribing to ai-agent-os events."""
+    return nats_url
+
+
+@pytest.fixture
+async def nats_client(docker_services):
+    """
+    Live NATS client for event subscription and publish tests.
+    Requires nats-py: poetry install -E nats
+    """
+    try:
+        import nats as nats_lib
+    except ImportError:
+        pytest.skip("nats-py not installed — run: poetry install -E nats")
+
+    nc = await nats_lib.connect("nats://localhost:4222")
+    yield nc
+    await nc.drain()
