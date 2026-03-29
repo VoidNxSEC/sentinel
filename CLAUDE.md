@@ -5,7 +5,7 @@
 
 **Maintainer**: kernelcore
 **License**: MIT / Apache-2.0 (per project)
-**GitHub**: github.com/voidnxlabs
+**GitHub**: github.com/VoidNxSEC
 
 ---
 
@@ -14,19 +14,22 @@
 | Project | Lang | Purpose | Port | Nix Output | Status |
 |---------|------|---------|------|------------|--------|
 | spectre | Rust | Event bus (NATS backbone) | 4222 | `spectre#spectre-proxy` | Prod |
-| owasaka | Go | Network SIEM + asset discovery | 8080 | `owasaka#oswaka` | Prod |
+| owasaka | Go | Network SIEM + asset discovery | 8080 | `owasaka#owasaka` | Prod |
 | phantom | Python | Document intelligence + RAG | 8008 | `phantom#phantom-api` | Prod |
 | phantom-soc/control | Rust/GTK4 | SOC dashboard | — | `phantom-soc#control-plane` | Beta |
 | phantom-soc/data | Python | NATS event consumer | — | — | Beta |
+| phantom-soc-kernel | Rust | SOC backend kernel | — | — | Beta |
 | ai-agent-os | Rust | System monitoring agent | — | `ai-agent-os#ai-agent` | Beta |
 | neoland | Rust | AI assistant TUI | — | `neoland#neoland` | Beta |
 | spooknix | Python | Privacy-first STT | 8000 | — | Beta |
 | cerebro | Python | Knowledge extraction + RAG | — | `cerebro#cerebro` | Beta |
-| securellm-bridge | Rust | Zero-trust LLM proxy | 8080 | `securellm-bridge#bridge` | Prod |
+| securellm-bridge | Rust | Zero-trust LLM proxy | 8081 | `securellm-bridge#bridge` | Prod |
 | securellm-mcp | TS | MCP server for IDEs | — | `securellm-mcp#mcp` | Prod |
 | neotron | Solidity/Py | Compliance engine | 7233 | — | Alpha |
 | cortex-desktop | TS/Rust | Tauri desktop UI | 1420 | — | Beta |
-| sentinel | Python | Security monitoring | — | — | Beta |
+| intelagent | Rust | Autonomous agent framework | — | — | Beta |
+| ml-ops-api | Python | Remote GPU inference bridge | — | — | Beta |
+| sentinel | Python | Integration test orchestrator | — | — | Beta |
 | spider-nix | Python | Nix dependency analysis | — | — | Beta |
 | adr-ledger | — | Architecture decisions | — | — | Active |
 
@@ -42,13 +45,13 @@ swissknife, matrix, chainscope, astrix, actions-tv, algo-dev, phishyx, low_level
                     ┌──────────────┐
                     │  NATS 4222   │  ← Spectre event bus
                     └──────┬───────┘
-           ┌───────────────┼───────────────┐
-           │               │               │
-    ┌──────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐
-    │  owasaka    │ │ ai-agent-os │ │ phantom-soc │
-    │  (Go)       │ │  (Rust)     │ │  data-plane │
-    │ network.*   │ │ system.*    │ │  (Python)   │
-    └─────────────┘ └─────────────┘ └──────┬──────┘
+       ┌───────────────────┼───────────────┐
+       │                   │               │
+┌──────▼──────┐  ┌─────────▼──────┐ ┌──────▼──────┐
+│  owasaka    │  │  ai-agent-os   │ │ phantom-soc │
+│  (Go)       │  │  (Rust)        │ │  data-plane │
+│ network.*   │  │  system.*      │ │  (Python)   │
+└─────────────┘  └────────────────┘ └──────┬──────┘
                                            │
                                     ┌──────▼──────┐
                                     │ phantom-soc │
@@ -56,23 +59,24 @@ swissknife, matrix, chainscope, astrix, actions-tv, algo-dev, phishyx, low_level
                                     │  (GTK4 UI)  │
                                     └─────────────┘
 
-    ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-    │  phantom    │ │  cerebro    │ │  spooknix   │
-    │  (FastAPI)  │ │ (knowledge) │ │  (Whisper)  │
-    │  :8008      │ │             │ │  :8000      │
-    └──────┬──────┘ └─────────────┘ └─────────────┘
-           │
-    ┌──────▼──────┐
-    │   cortex    │
-    │  desktop    │
-    │ (Tauri+Sv5) │
-    └─────────────┘
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│  phantom    │  │  cerebro    │  │  spooknix   │
+│  (FastAPI)  │◄─┤ (knowledge) │  │  (Whisper)  │
+│  :8008      │  │  ingest.*   │  │  :8000      │
+└──────┬──────┘  └─────────────┘  └─────────────┘
+       │
+┌──────▼──────┐  ┌─────────────┐  ┌─────────────┐
+│   cortex    │  │ securellm   │  │ securellm   │
+│  desktop    │  │  bridge     │  │    mcp      │
+│ (Tauri+Sv5) │  │  (Rust)     │  │   (TS)      │
+│  :1420      │  │  :8081      │  │             │
+└─────────────┘  └─────────────┘  └─────────────┘
 
-    ┌─────────────┐ ┌─────────────┐
-    │ securellm   │ │ securellm   │
-    │  bridge     │ │    mcp      │
-    │  (Rust)     │ │   (TS)      │
-    └─────────────┘ └─────────────┘
+┌──────────────────────────────────────────────────┐
+│  sentinel  (this repo)                           │
+│  Integration test orchestrator                   │
+│  scenarios/ · chaos/ · performance/ · packaging/ │
+└──────────────────────────────────────────────────┘
 ```
 
 ---
@@ -98,8 +102,8 @@ swissknife, matrix, chainscope, astrix, actions-tv, algo-dev, phishyx, low_level
 | 6222 | NATS cluster | TCP | Internal routing |
 | 8008 | phantom-api | HTTP | FastAPI REST |
 | 8000 | spooknix | HTTP | Whisper STT |
-| 8080 | securellm-bridge | HTTP | LLM proxy |
-| 8081 | llama.cpp | HTTP | Local LLM inference |
+| 8080 | owasaka | HTTP | SIEM REST API |
+| 8081 | securellm-bridge | HTTP | Zero-trust LLM proxy |
 | 1420 | cortex-desktop | HTTP | Tauri dev server |
 | 5432 | TimescaleDB | TCP | Observability DB |
 | 9090 | Prometheus | HTTP | Metrics |
@@ -124,9 +128,9 @@ Source: `spectre/crates/spectre-events/src/event.rs`
 | `network.topology.updated.v1` | owasaka | — |
 | `system.metrics.v1` | ai-agent-os | phantom-soc data-plane |
 | `ingest.file.created.v1` | phantom | — |
-| `ingest.file.sanitized.v1` | phantom | — |
+| `ingest.file.sanitized.v1` | phantom | cerebro |
 | `cognition.query.received.v1` | cerebro | — |
-| `cognition.insight.generated.v1` | cerebro | — |
+| `cognition.insight.generated.v1` | cerebro | phantom (RAG index) |
 | `llm.request.v1` | securellm-bridge | spectre |
 | `llm.response.v1` | securellm-bridge | spectre |
 | `analysis.request.v1` | phantom | spectre |
@@ -138,30 +142,51 @@ Source: `spectre/crates/spectre-events/src/event.rs`
 
 ```bash
 # 1. Clone
-git clone git@github.com:voidnxlabs/master.git && cd master
+git clone git@github.com:VoidNxSEC/master.git && cd master
 
-# 2. Boot infrastructure
-docker compose up -d   # NATS + phantom-api + owasaka
+# 2. Boot core services (NATS + phantom-api + owasaka + ai-agent-os)
+docker compose --profile core up -d
 
-# 3. Verify
-curl localhost:8008/health  # → {"status": "operational"}
+# 3. Boot with intelligence tier (+ cerebro + securellm-bridge)
+docker compose --profile core --profile intelligence up -d
+
+# 4. Verify
+curl localhost:8008/health   # → {"status": "operational"}
 curl localhost:8222/healthz  # → (NATS ok)
 
-# 4. Enter any project shell
+# 5. Enter any project shell
 cd spectre && nix develop   # Rust + cargo + clippy
 cd phantom && nix develop   # Python + pytest + ruff
 cd owasaka && nix develop   # Go + golangci-lint
 
-# 5. Run tests
-nix develop --command cargo test    # Rust projects
-nix develop --command go test ./... # Go projects
-nix develop --command pytest        # Python projects
+# 6. Run project tests
+nix develop --command cargo test      # Rust projects
+nix develop --command go test ./...   # Go projects
+nix develop --command pytest          # Python projects
+
+# 7. Run integration tests (from sentinel/)
+cd sentinel
+poetry install -E nats
+poetry run pytest scenarios/ -m e2e -v
+poetry run pytest chaos/ -m chaos -v
+poetry run pytest performance/ -m performance -v
 ```
+
+### Compose Profiles
+
+| Profile | Services | Use case |
+|---------|----------|----------|
+| `core` | nats, phantom-api, owasaka, ai-agent-os | Daily dev |
+| `intelligence` | + cerebro, securellm-bridge | RAG + LLM work |
+| `gpu` | + spooknix (CUDA) | STT / transcription |
+| `observability` | + prometheus, grafana, jaeger | Metrics work |
+| `compliance` | + neotron (temporal + postgres) | Compliance work |
+| `full` | all of the above | Full integration tests |
 
 ### Makefile Targets
 
 ```bash
-make dev          # Boot core services (NATS + phantom-api + owasaka)
+make dev          # Boot core services
 make down         # Stop all services
 make smoke-test   # Validate all services are healthy
 make build-all    # Build spectre + owasaka + phantom
@@ -180,6 +205,9 @@ NATS_URL=nats://localhost:4222
 # Phantom API
 PHANTOM_PORT=8008
 
+# SecureLLM Bridge
+SECURELLM_PORT=8081
+
 # Spooknix (optional, GPU)
 MODEL_SIZE=large-v3
 CUDA_VISIBLE_DEVICES=0
@@ -195,6 +223,8 @@ DEEPSEEK_API_KEY=
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
 ```
+
+See `~/master/.env.example` for the full consolidated list.
 
 ---
 
@@ -214,20 +244,62 @@ OPENAI_API_KEY=
 - Never mock NATS, databases, or external services in integration tests
 - Coverage minimums: Python 70%, Rust (clippy clean), Go (race detector clean)
 
+### Sentinel Test Suite Structure
+
+```
+sentinel/
+├── scenarios/          # E2E service flow tests (require --profile core up)
+│   ├── test_spectre_e2e.py     # owasaka/ai-agent-os → NATS event validation
+│   ├── test_phantom_e2e.py     # upload → index → search → chat pipeline
+│   ├── test_ai_agent_e2e.py    # system.metrics.v1 schema + continuity
+│   └── test_securellm_e2e.py   # bridge health + LLM proxy flow
+├── chaos/              # Failure injection (require --profile core up)
+│   ├── test_nats_reconnect.py  # kill NATS, verify services survive + reconnect
+│   ├── test_partial_boot.py    # core only — intelligence services gracefully absent
+│   └── test_phantom_degraded.py
+├── performance/        # SLO validation (require --profile core up)
+│   ├── test_phantom_latency.py # P99 < 500ms
+│   ├── test_throughput.py      # ≥20 req/s sustained
+│   └── test_spooknix_latency.py
+├── fixtures/bundles/   # Test data (thermal, multi-alert, memory, normal)
+├── mocks/              # Mock agents for offline testing
+├── packaging/          # Distribution build scripts
+│   ├── nix/            # NixOS module
+│   ├── deb/            # Debian/Ubuntu .deb
+│   ├── rpm/            # RHEL/Fedora .rpm
+│   ├── macos/          # Homebrew formula + universal binary
+│   └── windows/        # .msi + winget manifest
+└── conftest.py         # Fixtures: phantom_api_client, nats_client, owasaka_client, etc.
+```
+
+### Pytest Markers
+
+| Marker | Meaning | Run with |
+|--------|---------|----------|
+| `e2e` | Cross-service flow | `-m e2e` |
+| `chaos` | Failure injection | `-m chaos` |
+| `performance` | SLO measurement | `-m performance` |
+| `compliance` | Regulatory checks | `-m compliance` |
+| `slow` | >10s expected | `-m "not slow"` to skip |
+
 ---
 
 ## 📁 Key File Locations
 
 | What | Where |
 |------|-------|
-| Root compose | `docker-compose.yml` |
-| Full infra (TimescaleDB, Neo4j, etc.) | `spectre/docker-compose.yml` |
-| Smoke tests | `scripts/smoke-test.sh` |
-| CI pipeline | `.github/workflows/ci.yml` |
-| Brand guide | `brand/README.md` |
-| ADR ledger | `adr-ledger/` |
-| Event definitions | `spectre/crates/spectre-events/src/event.rs` |
-| Website | `website/` |
+| Unified compose (all profiles) | `~/master/docker-compose.yml` |
+| Env template (consolidated) | `~/master/.env.example` |
+| Test compose (sentinel only) | `sentinel/docker-compose.test.yml` |
+| Smoke test script | `sentinel/scripts/smoke-test.sh` |
+| Integration test suite | `sentinel/scenarios/`, `sentinel/chaos/`, `sentinel/performance/` |
+| Packaging scripts | `sentinel/packaging/` |
+| CI — per-project build matrix | `sentinel/.github/workflows/ci.yml` |
+| CI — integration tests | `sentinel/.github/workflows/integration-tests.yml` |
+| CI — release pipeline | `sentinel/.github/workflows/release.yml` |
+| PR template | `~/master/.github/pull_request_template.md` |
+| ADR ledger | `~/master/adr-ledger/` |
+| Event definitions | `~/master/spectre/crates/spectre-events/src/event.rs` |
 
 ---
 
@@ -244,6 +316,7 @@ Each project has its own `CLAUDE.md` with detailed architecture, testing, and de
 ## 🏷️ Brand
 
 **Name**: voidnxlabs — lowercase, no spaces, no hyphens
+**GitHub org**: VoidNxSEC
 **Tagline**: "Sovereign Intelligence for NixOS"
 **Author field**: `voidnxlabs <dev@voidnxlabs.io>` (all manifests)
 **Prefix convention**: spectre-* (event bus), phantom-* (ML/intelligence), securellm-* (LLM security)
