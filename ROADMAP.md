@@ -207,6 +207,8 @@ There is no unified compose, no integration tests across services, no TLS, no au
 | cerebro | Phase 4 done | — | 112 pass | no | needs NATS wire |
 | securellm-bridge | Core done | yes | — | no | needs phantom wire |
 | securellm-mcp | Phase 1 done | yes | — | N/A | prod ready |
+| intelagent | Foundation | yes | core only | no | scaffolding, ADR-0054 decoupled |
+| phantom-soc-kernel | Kernel done | yes | — | no | backend complete, needs UI wire |
 | adr-ledger | Alpha | — | — | N/A | docs only |
 
 ---

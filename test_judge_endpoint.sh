@@ -5,7 +5,7 @@ echo "=== Testing Phantom /judge Endpoint ==="
 
 # 1. Start Phantom API in background
 echo "Starting Phantom API..."
-cd /home/kernelcore/arch/phantom
+cd /home/kernelcore/master/phantom
 nix develop -c python -m phantom.api.app &
 PHANTOM_PID=$!
 
@@ -44,4 +44,3 @@ echo "Stopping Phantom..."
 kill $PHANTOM_PID
 
 echo "✅ Test complete!"
-
