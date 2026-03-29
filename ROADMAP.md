@@ -56,9 +56,12 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 
 ### 1.2 — Nix flake for local dev
 - [x] `sentinel/flake.nix` — remote flake inputs for all projects, custom test runner
-- [ ] Top-level `flake.nix` in `/home/kernelcore/master/` composing all project shells
-- [ ] `nix run .#nats` / `nix run .#phantom-api` / `nix run .#owasaka` app outputs
-- [ ] `nix develop` — unified shell with all tools (cargo, go, python, bun)
+- [x] Top-level `flake.nix` at `~/master/` — local-only (no root git repo; each project is its own repo)
+- [x] `nix run .#nats` — start NATS standalone (JetStream, store /tmp/nats-data)
+- [x] `nix run .#dev-stack` — docker compose --profile core up + health checks
+- [x] `nix run .#smoke-test` — run sentinel smoke-test.sh
+- [x] `nix run .#integration-tests` — full pytest suite via poetry
+- [x] `nix develop` — unified shell (Rust + Go + Python + Bun + natscli + sops)
 
 ### 1.3 — Smoke test script ✅
 - [x] `sentinel/scripts/smoke-test.sh` — boots compose, health checks all endpoints, exit 1 on failure
@@ -66,7 +69,7 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 
 ---
 
-## Milestone 2 — Integration Tests (DONE — suite written, live validation pending)
+## Milestone 2 — Integration Tests (suite complete + reconnect fixes done; live validation next)
 
 **Goal**: Prove events flow across service boundaries.
 
@@ -75,7 +78,7 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 - [x] Test: ai-agent-os → NATS `system.metrics.v1` → CPU/memory field validation
 - [x] Test: DNS query event flow (`network.dns.query.v1`)
 - [x] Test: All event subjects follow `{domain}.{entity}.{action}.v{version}` format
-- [ ] **Live validation**: run against real stack (blocked on M1.2 flake + reconnect fixes)
+- [ ] **Live validation**: run against real stack (reconnect fixes done; ready to execute)
 
 ### 2.2 — Phantom API E2E ✅ (suite written)
 - [x] Test: upload file → `/vectors/search` returns it (`scenarios/test_phantom_e2e.py`)
@@ -88,12 +91,12 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 - [ ] Test: publish mock event to NATS → GTK4 LogViewer receives it (headless)
 - [ ] Test: scheduler dequeues tasks when enqueued
 
-### 2.4 — NATS reconnect
+### 2.4 — NATS reconnect ✅
 - [x] Test: kill NATS → owasaka/ai-agent-os survive + reconnect (`chaos/test_nats_reconnect.py`)
 - [x] Test: partial boot → intelligence services gracefully unavailable (`chaos/test_partial_boot.py`)
 - [x] Test: phantom degraded → cached responses served (`chaos/test_phantom_degraded.py`)
-- [ ] **Fix**: add reconnect logic to owasaka `Publisher` (currently one-shot connect)
-- [ ] **Fix**: add reconnect logic to ai-agent-os `nats_client` (currently one-shot connect)
+- [x] **Fix**: owasaka `Publisher` — `MaxReconnects(-1)`, `ReconnectWait(2s)`, disconnect/reconnect handlers
+- [x] **Fix**: ai-agent-os `nats_client` — `ConnectOptions::max_reconnects(None)`, `connection_timeout(5s)`, event callback
 
 ### 2.5 — Performance / SLO ✅ (suite written)
 - [x] Test: phantom-api P99 < 500ms (`performance/test_phantom_latency.py`)
@@ -252,11 +255,11 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 | Project | Phase | Builds | Tests | NATS Wired | Prod Ready |
 |---------|-------|--------|-------|------------|------------|
 | spectre | Phase 0 done | yes | 11/11 | N/A (is the bus) | infra yes |
-| owasaka | All 6 phases | yes | 35 pass | publishes | needs reconnect |
+| owasaka | All 6 phases | yes | 35 pass | publishes | reconnect ✅, needs TLS |
 | phantom | Phase 1 done | yes | 70%+ cov | not yet | API yes, needs TLS |
 | phantom-soc/control | A5 done | yes | — | subscribes (EventBus) | dev only |
 | phantom-soc/data | A4 done | yes | — | consumes | dev only |
-| ai-agent-os | Phase 1 done | yes | 2/2 | publishes | needs reconnect |
+| ai-agent-os | Phase 1 done | yes | 2/2 | publishes | reconnect ✅, needs TLS |
 | neoland | 65/100 | yes | 118 pass | no | needs SLO |
 | spooknix | Sprint 3 done | yes | — | no | needs TLS |
 | cerebro | Phase 4 done | — | 112 pass | no | needs NATS wire |
@@ -279,9 +282,9 @@ M4 (observability)  ->  M5 (CI/CD) ✅  ->  M6 (ML pipeline)  ->  M7+M8 (deploy 
 ```
 
 **Immediate blockers:**
-1. NATS reconnect logic in owasaka + ai-agent-os (M2.4 — code fix required)
-2. NKey credentials + ACLs (M3.1 — unlocks secure multi-service comms)
-3. Live stack validation — run `pytest scenarios/ chaos/ performance/` against real compose
+1. ~~NATS reconnect logic in owasaka + ai-agent-os~~ ✅ done (2026-03-29)
+2. Live stack validation — run `pytest scenarios/ chaos/ performance/` against real compose
+3. NKey credentials + ACLs (M3.1 — next hard gate before production)
 
 ---
 
