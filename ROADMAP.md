@@ -160,10 +160,19 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 - [x] No plaintext secrets in git — all sensitive files gitignored, encrypted copies committed
 - [ ] HF_TOKEN, DATABASE_URL, API keys → SOPS (deferred to per-project adoption)
 
-### 3.4 — SecureLLM Bridge integration
-- [ ] Route all LLM calls through securellm-bridge (phantom providers → bridge → model)
-- [ ] Rate limiting and audit logging via bridge
-- [ ] Bridge health check in phantom `/ready` endpoint
+### 3.4 — SecureLLM Bridge integration ✅
+- [x] `phantom/api/cortex_api.py` — `_call_via_bridge()` routes all providers through bridge
+  - `SECURELLM_BRIDGE_URL` env var (Docker: `http://securellm-bridge:8080`, local dev: `http://localhost:8081`)
+  - `_bridge_model_id()` maps cortex provider names → `{provider}/{model}` identifiers
+  - Graceful fallback: if bridge unreachable (local dev) → direct provider calls
+- [x] `phantom/api/app.py` — `/ready` endpoint now checks `securellm_bridge` status
+- [x] `docker-compose.yml` — `SECURELLM_BRIDGE_URL` wired to phantom-api service
+- [x] `.env.example` — `SECURELLM_BRIDGE_URL` documented
+- [x] Integration tests: `sentinel/scenarios/test_securellm_e2e.py` extended with:
+  - `test_phantom_ready_includes_bridge_check` — validates /ready wiring
+  - `test_phantom_chat_routes_through_bridge` — metrics-based routing proof
+  - `test_bridge_rate_limit_enforced` — 429 enforcement under load
+  - `test_bridge_provider_model_routing` — /v1/models registry check
 
 ---
 
