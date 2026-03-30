@@ -115,29 +115,28 @@ resolve_repo_url() {
     return 0
   fi
 
+  if repo_default_url "$repo"; then
+    return 0
+  fi
+
   lock_url="$(lock_value "$repo" "url" || true)"
   if [ -n "$lock_url" ]; then
     echo "$lock_url"
     return 0
   fi
 
-  repo_default_url "$repo"
+  echo "No URL mapping found for repository: $repo" >&2
+  return 1
 }
 
 resolve_repo_ref() {
   local repo="$1"
-  local env_key lock_ref
+  local env_key
   env_key="$(repo_env_key "$repo")"
 
   local override_var="SENTINEL_REPO_REF_${env_key}"
   if [ -n "${!override_var:-}" ]; then
     echo "${!override_var}"
-    return 0
-  fi
-
-  lock_ref="$(lock_value "$repo" "rev" || true)"
-  if [ -n "$lock_ref" ]; then
-    echo "$lock_ref"
     return 0
   fi
 

@@ -14,6 +14,7 @@ tar -czf "$BACKUP_DIR/spectre-config-$TIMESTAMP.tar.gz" -C "$ROOT_DIR" spectre/c
 tar -czf "$BACKUP_DIR/tls-secrets-$TIMESTAMP.tar.gz" -C "$ROOT_DIR" secrets/tls
 cp "$ROOT_DIR/secrets/runtime.env.enc" "$BACKUP_DIR/runtime.env.enc.$TIMESTAMP"
 cp "$ROOT_DIR/secrets/nkeys.env.enc" "$BACKUP_DIR/nkeys.env.enc.$TIMESTAMP"
+BACKUP_ROOT="$BACKUP_DIR" TIMESTAMP="$TIMESTAMP" "$ROOT_DIR/sentinel/scripts/backup-config-git.sh"
 ls -lh "$BACKUP_DIR"
 
 echo "Shutting down core stack cleanly"

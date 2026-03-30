@@ -12,17 +12,20 @@ Validates the full ingest→extract→RAG loop:
 import asyncio
 import io
 import json
+import os
 import time
 import uuid
 
 import httpx
 import pytest
 
+from test_runtime import client_kwargs
+
 pytestmark = pytest.mark.e2e
 
-PHANTOM_URL = "http://localhost:8008"
-SECURELLM_URL = "http://localhost:8081"
-CEREBRO_URL = "http://localhost:8009"
+PHANTOM_URL = os.getenv("SENTINEL_PUBLIC_PHANTOM_URL", "http://localhost:8008")
+SECURELLM_URL = os.getenv("SENTINEL_SECURELLM_URL", "http://localhost:8081")
+CEREBRO_URL = os.getenv("SENTINEL_CEREBRO_URL", "http://localhost:8002")
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,19 +60,19 @@ async def _wait_for_event(
 
 @pytest.fixture
 async def phantom_client(docker_services):
-    async with httpx.AsyncClient(base_url=PHANTOM_URL, timeout=30.0) as c:
+    async with httpx.AsyncClient(**client_kwargs(PHANTOM_URL, timeout=30.0)) as c:
         yield c
 
 
 @pytest.fixture
 async def securellm_client(docker_services):
-    async with httpx.AsyncClient(base_url=SECURELLM_URL, timeout=30.0) as c:
+    async with httpx.AsyncClient(**client_kwargs(SECURELLM_URL, timeout=30.0)) as c:
         yield c
 
 
 @pytest.fixture
 async def cerebro_client(docker_services):
-    async with httpx.AsyncClient(base_url=CEREBRO_URL, timeout=30.0) as c:
+    async with httpx.AsyncClient(**client_kwargs(CEREBRO_URL, timeout=30.0)) as c:
         yield c
 
 

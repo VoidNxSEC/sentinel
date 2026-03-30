@@ -14,13 +14,16 @@ Optional: cortex dev server on localhost:1420 (bun run dev in phantom-nx/apps/co
 """
 
 import io
+import os
 import time
 
 import httpx
 import pytest
 
+from test_runtime import client_kwargs, request_kwargs
 
-PHANTOM_URL = "http://localhost:8008"
+
+PHANTOM_URL = os.getenv("SENTINEL_PUBLIC_PHANTOM_URL", "http://localhost:8008")
 CORTEX_DEV_URL = "http://localhost:1420"
 
 
@@ -30,12 +33,12 @@ CORTEX_DEV_URL = "http://localhost:1420"
 
 def _cortex_client() -> httpx.Client:
     """Synchronous client configured exactly as cortex's fetch() calls."""
-    return httpx.Client(base_url=PHANTOM_URL, timeout=30.0)
+    return httpx.Client(**client_kwargs(PHANTOM_URL, timeout=30.0))
 
 
 def _cortex_dev_available() -> bool:
     try:
-        r = httpx.get(CORTEX_DEV_URL, timeout=3.0)
+        r = httpx.get(CORTEX_DEV_URL, **request_kwargs(CORTEX_DEV_URL, timeout=3.0))
         return r.status_code < 500
     except Exception:
         return False
@@ -105,7 +108,7 @@ def test_cortex_file_upload_round_trip(phantom_api_client_sync):
     Drag-and-drop in Settings tab uploads to phantom's RAG index.
     Verifies cortex reads: data.files[].filename and data.files[].status
     """
-    content = b"cortex e2e test document — round trip validation."
+    content = "cortex e2e test document - round trip validation.".encode()
     files = [("files", ("cortex_test.txt", io.BytesIO(content), "text/plain"))]
 
     r = phantom_api_client_sync.post("/api/upload", files=files)
@@ -254,5 +257,5 @@ def test_cortex_browser_send_message():
 @pytest.fixture
 def phantom_api_client_sync(docker_services):
     """Synchronous httpx client for phantom-api on port 8008."""
-    with httpx.Client(base_url=PHANTOM_URL, timeout=30.0) as client:
+    with httpx.Client(**client_kwargs(PHANTOM_URL, timeout=30.0)) as client:
         yield client

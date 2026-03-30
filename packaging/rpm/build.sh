@@ -10,8 +10,14 @@
 set -euo pipefail
 
 VERSION="${VERSION:-0.1.0}"
-DIST_DIR="$(git rev-parse --show-toplevel)/dist"
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SENTINEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$SENTINEL_ROOT}"
+DIST_DIR="$SENTINEL_ROOT/dist"
+
+if [ "$WORKSPACE_ROOT" = "$SENTINEL_ROOT" ] && [ -d "$SENTINEL_ROOT/../phantom" ]; then
+  WORKSPACE_ROOT="$(cd "$SENTINEL_ROOT/.." && pwd)"
+fi
 
 mkdir -p "$DIST_DIR"
 
@@ -47,10 +53,10 @@ else
 
   # Fallback: build Rust binaries and wrap with fpm directly
   for project in ai-agent-os securellm-bridge phantom-nx; do
-    if [ -d "$REPO_ROOT/$project" ]; then
+    if [ -d "$WORKSPACE_ROOT/$project" ]; then
       log "Building $project..."
       (
-        cd "$REPO_ROOT/$project"
+        cd "$WORKSPACE_ROOT/$project"
         cargo build --release 2>/dev/null || true
         bin=$(ls target/release/ | grep -v '\.' | head -1)
         if [ -n "$bin" ] && [ -f "target/release/$bin" ]; then

@@ -6,12 +6,15 @@ Performance: Sustained throughput SLOs
 import time
 import asyncio
 import statistics
+import os
 import pytest
 import httpx
 
+from test_runtime import client_kwargs
+
 pytestmark = [pytest.mark.performance, pytest.mark.slow]
 
-PHANTOM_URL = "http://localhost:8008"
+PHANTOM_URL = os.getenv("SENTINEL_PUBLIC_PHANTOM_URL", "http://localhost:8008")
 TARGET_RPS = 20
 DURATION_SECONDS = 10
 CONCURRENCY = 20
@@ -21,7 +24,7 @@ P95_THRESHOLD_MS = 1000
 @pytest.mark.asyncio
 async def test_sustained_throughput_20rps():
     """phantom-api sustains ≥20 req/s for 10s under 20 concurrent clients."""
-    async with httpx.AsyncClient(base_url=PHANTOM_URL, timeout=30.0) as client:
+    async with httpx.AsyncClient(**client_kwargs(PHANTOM_URL, timeout=30.0)) as client:
         try:
             await client.get("/health")
         except httpx.ConnectError:
@@ -32,7 +35,7 @@ async def test_sustained_throughput_20rps():
 
     async def worker():
         nonlocal errors
-        async with httpx.AsyncClient(base_url=PHANTOM_URL, timeout=30.0) as c:
+        async with httpx.AsyncClient(**client_kwargs(PHANTOM_URL, timeout=30.0)) as c:
             deadline = time.time() + DURATION_SECONDS
             while time.time() < deadline:
                 try:
@@ -87,7 +90,7 @@ async def test_concurrent_connections_stability():
 
     async def single_request():
         nonlocal errors
-        async with httpx.AsyncClient(base_url=PHANTOM_URL, timeout=30.0) as c:
+        async with httpx.AsyncClient(**client_kwargs(PHANTOM_URL, timeout=30.0)) as c:
             try:
                 resp = await c.post(
                     "/api/chat",
@@ -99,7 +102,7 @@ async def test_concurrent_connections_stability():
                 errors += 1
 
     try:
-        async with httpx.AsyncClient(base_url=PHANTOM_URL, timeout=5.0) as probe:
+        async with httpx.AsyncClient(**client_kwargs(PHANTOM_URL, timeout=5.0)) as probe:
             await probe.get("/health")
     except httpx.ConnectError:
         pytest.skip("phantom-api not running")

@@ -8,29 +8,35 @@ Validates:
   4. Grafana is up with voidnxlabs datasource and dashboard provisioned
 """
 
+import os
+
 import pytest
 import httpx
 
+from test_runtime import client_kwargs
+
 pytestmark = pytest.mark.e2e
 
-PROMETHEUS_URL = "http://localhost:9090"
-GRAFANA_URL = "http://localhost:3001"
+PROMETHEUS_URL = os.getenv("SENTINEL_PROMETHEUS_URL", "http://localhost:9090")
+GRAFANA_URL = os.getenv("SENTINEL_GRAFANA_URL", "http://localhost:3001")
 GRAFANA_USER = "admin"
 GRAFANA_PASS = "admin"
 
 
 @pytest.fixture
 async def prom_client():
-    async with httpx.AsyncClient(base_url=PROMETHEUS_URL, timeout=15.0) as c:
+    async with httpx.AsyncClient(**client_kwargs(PROMETHEUS_URL, timeout=15.0)) as c:
         yield c
 
 
 @pytest.fixture
 async def grafana_client():
     async with httpx.AsyncClient(
-        base_url=GRAFANA_URL,
-        auth=(GRAFANA_USER, GRAFANA_PASS),
-        timeout=15.0,
+        **client_kwargs(
+            GRAFANA_URL,
+            timeout=15.0,
+            auth=(GRAFANA_USER, GRAFANA_PASS),
+        ),
     ) as c:
         yield c
 

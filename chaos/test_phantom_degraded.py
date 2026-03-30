@@ -8,12 +8,18 @@ import subprocess
 import pytest
 import httpx
 
+from test_runtime import compose_file, request_kwargs, service_url
+
 pytestmark = pytest.mark.chaos
+
+COMPOSE_FILE = compose_file()
+CEREBRO_URL = service_url("SENTINEL_CEREBRO_URL", "http://localhost:8002")
+PHANTOM_URL = service_url("SENTINEL_PUBLIC_PHANTOM_URL", "http://localhost:8008")
 
 
 def _docker_compose(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["docker", "compose", "-f", "../docker-compose.yml"] + args,
+        ["docker", "compose", "-f", str(COMPOSE_FILE)] + args,
         capture_output=True,
         text=True,
     )
@@ -21,7 +27,7 @@ def _docker_compose(args: list[str]) -> subprocess.CompletedProcess:
 
 def _cerebro_healthy() -> bool:
     try:
-        resp = httpx.get("http://localhost:8002/health", timeout=3.0)
+        resp = httpx.get(f"{CEREBRO_URL}/health", **request_kwargs(CEREBRO_URL, timeout=3.0))
         return resp.status_code == 200
     except Exception:
         return False
@@ -29,7 +35,7 @@ def _cerebro_healthy() -> bool:
 
 def _phantom_healthy() -> bool:
     try:
-        resp = httpx.get("http://localhost:8008/health", timeout=3.0)
+        resp = httpx.get(f"{PHANTOM_URL}/health", **request_kwargs(PHANTOM_URL, timeout=3.0))
         return resp.status_code == 200
     except Exception:
         return False
@@ -52,9 +58,9 @@ def test_cerebro_serves_while_phantom_down():
     # Cerebro search should still respond
     try:
         resp = httpx.get(
-            "http://localhost:8002/search",
+            f"{CEREBRO_URL}/search",
             params={"q": "test query"},
-            timeout=10.0,
+            **request_kwargs(CEREBRO_URL, timeout=10.0),
         )
         # Accept any non-5xx response — even 404 means cerebro is alive
         assert resp.status_code < 500, f"cerebro returned server error: {resp.status_code}"

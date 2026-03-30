@@ -12,8 +12,17 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$RepoRoot = git rev-parse --show-toplevel
-$DistDir = Join-Path $RepoRoot "dist\windows"
+$SentinelRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$WorkspaceRoot = $env:WORKSPACE_ROOT
+if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
+    $WorkspaceRoot = $SentinelRoot
+    if (Test-Path (Join-Path $SentinelRoot "..\phantom")) {
+        $WorkspaceRoot = Resolve-Path (Join-Path $SentinelRoot "..")
+    }
+} else {
+    $WorkspaceRoot = Resolve-Path $WorkspaceRoot
+}
+$DistDir = Join-Path $SentinelRoot "dist\windows"
 
 New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
 
@@ -25,7 +34,7 @@ function Build-RustBin {
         [string]$Binary
     )
 
-    $projectPath = Join-Path $RepoRoot $Project
+    $projectPath = Join-Path $WorkspaceRoot $Project
     if (-not (Test-Path $projectPath)) {
         Log "Skipping $Project — directory not found"
         return

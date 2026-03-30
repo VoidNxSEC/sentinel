@@ -125,6 +125,7 @@ The platform is ready for production only when:
 - rollback steps are documented and current
 - rollback has been exercised, not only written down
 - database and JetStream recovery procedures are validated
+- git-based snapshots exist for the live config repos used in recovery
 
 **Blocks go-live if**
 - rollback exists only in theory

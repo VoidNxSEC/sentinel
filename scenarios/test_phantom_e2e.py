@@ -3,17 +3,21 @@ E2E: Phantom document intelligence pipeline
 upload → vectors/search → /api/chat uses injected context
 """
 
+import os
+
 import pytest
 import httpx
 
+from test_runtime import client_kwargs
+
 pytestmark = pytest.mark.e2e
 
-PHANTOM_URL = "http://localhost:8008"
+PHANTOM_URL = os.getenv("SENTINEL_PUBLIC_PHANTOM_URL", "http://localhost:8008")
 
 
 @pytest.fixture
 async def client():
-    async with httpx.AsyncClient(base_url=PHANTOM_URL, timeout=30.0) as c:
+    async with httpx.AsyncClient(**client_kwargs(PHANTOM_URL, timeout=30.0)) as c:
         yield c
 
 

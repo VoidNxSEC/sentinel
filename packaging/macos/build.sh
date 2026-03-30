@@ -10,8 +10,14 @@
 set -euo pipefail
 
 VERSION="${VERSION:-0.1.0}"
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-DIST_DIR="$REPO_ROOT/dist/macos"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SENTINEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$SENTINEL_ROOT}"
+DIST_DIR="$SENTINEL_ROOT/dist/macos"
+
+if [ "$WORKSPACE_ROOT" = "$SENTINEL_ROOT" ] && [ -d "$SENTINEL_ROOT/../phantom" ]; then
+  WORKSPACE_ROOT="$(cd "$SENTINEL_ROOT/.." && pwd)"
+fi
 
 mkdir -p "$DIST_DIR"
 
@@ -31,14 +37,14 @@ build_universal() {
   local project="$1"
   local bin="$2"
 
-  if [ ! -d "$REPO_ROOT/$project" ]; then
+  if [ ! -d "$WORKSPACE_ROOT/$project" ]; then
     log "Skipping $project — directory not found"
     return 0
   fi
 
   log "Building $project ($bin) universal binary..."
   (
-    cd "$REPO_ROOT/$project"
+    cd "$WORKSPACE_ROOT/$project"
     cargo build --release --target aarch64-apple-darwin 2>/dev/null || true
     cargo build --release --target x86_64-apple-darwin 2>/dev/null || true
 
@@ -66,7 +72,7 @@ build_universal "securellm-bridge"  "securellm-bridge"
 build_universal "phantom-nx"        "phantom-nx"
 
 # Copy Homebrew formula
-cp "$REPO_ROOT/packaging/macos/homebrew-formula.rb" "$DIST_DIR/voidnxlabs.rb"
+cp "$SENTINEL_ROOT/packaging/macos/homebrew-formula.rb" "$DIST_DIR/voidnxlabs.rb"
 
 # Create tarball for each binary
 for bin in "$DIST_DIR"/*; do

@@ -6,12 +6,15 @@ P99 < 500ms for /api/chat (ROADMAP 7.3)
 import time
 import asyncio
 import statistics
+import os
 import pytest
 import httpx
 
+from test_runtime import client_kwargs
+
 pytestmark = [pytest.mark.performance, pytest.mark.slow]
 
-PHANTOM_URL = "http://localhost:8008"
+PHANTOM_URL = os.getenv("SENTINEL_PUBLIC_PHANTOM_URL", "http://localhost:8008")
 SAMPLE_SIZE = 20
 P99_THRESHOLD_MS = 500
 P95_THRESHOLD_MS = 350
@@ -31,7 +34,7 @@ async def _chat_request(client: httpx.AsyncClient) -> float:
 @pytest.mark.asyncio
 async def test_chat_p99_latency():
     """P99 latency for /api/chat is below 500ms."""
-    async with httpx.AsyncClient(base_url=PHANTOM_URL, timeout=30.0) as client:
+    async with httpx.AsyncClient(**client_kwargs(PHANTOM_URL, timeout=30.0)) as client:
         try:
             await client.get("/health")
         except httpx.ConnectError:
@@ -60,7 +63,7 @@ async def test_chat_p99_latency():
 @pytest.mark.asyncio
 async def test_chat_cold_start_latency():
     """First request after service start completes within 2s."""
-    async with httpx.AsyncClient(base_url=PHANTOM_URL, timeout=30.0) as client:
+    async with httpx.AsyncClient(**client_kwargs(PHANTOM_URL, timeout=30.0)) as client:
         try:
             await client.get("/health")
         except httpx.ConnectError:
@@ -73,7 +76,7 @@ async def test_chat_cold_start_latency():
 @pytest.mark.asyncio
 async def test_health_endpoint_latency():
     """GET /health responds within 50ms (lightweight liveness probe)."""
-    async with httpx.AsyncClient(base_url=PHANTOM_URL, timeout=5.0) as client:
+    async with httpx.AsyncClient(**client_kwargs(PHANTOM_URL, timeout=5.0)) as client:
         try:
             start = time.perf_counter()
             resp = await client.get("/health")

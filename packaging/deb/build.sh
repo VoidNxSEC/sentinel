@@ -11,8 +11,14 @@ set -euo pipefail
 
 VERSION="${VERSION:-0.1.0}"
 ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
-DIST_DIR="$(git rev-parse --show-toplevel)/dist"
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SENTINEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$SENTINEL_ROOT}"
+DIST_DIR="$SENTINEL_ROOT/dist"
+
+if [ "$WORKSPACE_ROOT" = "$SENTINEL_ROOT" ] && [ -d "$SENTINEL_ROOT/../phantom" ]; then
+  WORKSPACE_ROOT="$(cd "$SENTINEL_ROOT/.." && pwd)"
+fi
 
 mkdir -p "$DIST_DIR"
 
@@ -32,31 +38,34 @@ build_rust_deb() {
   local bin="$2"
   log "Building $project ($bin) .deb..."
 
-  if [ ! -d "$REPO_ROOT/$project" ]; then
+  if [ ! -d "$WORKSPACE_ROOT/$project" ]; then
     log "  Skipping $project — directory not found"
     return 0
   fi
 
   (
-    cd "$REPO_ROOT/$project"
-    # Ensure Cargo.toml has [package.metadata.deb] section
-    cargo deb \
+    cd "$WORKSPACE_ROOT/$project"
+    if cargo deb \
       --no-build \
       --output "$DIST_DIR/${bin}_${VERSION}_${ARCH}.deb" \
-      2>/dev/null || \
-    cargo build --release && \
-    fpm \
-      -s dir -t deb \
-      --name "$bin" \
-      --version "$VERSION" \
-      --architecture "$ARCH" \
-      --maintainer "voidnxlabs <dev@voidnxlabs.io>" \
-      --description "voidnxlabs $project" \
-      --url "https://github.com/VoidNxSEC" \
-      --license "Apache-2.0" \
-      --prefix /usr/bin \
-      --package "$DIST_DIR/${bin}_${VERSION}_${ARCH}.deb" \
-      "target/release/$bin=/usr/bin/$bin"
+      2>/dev/null
+    then
+      :
+    else
+      cargo build --release
+      fpm \
+        -s dir -t deb \
+        --name "$bin" \
+        --version "$VERSION" \
+        --architecture "$ARCH" \
+        --maintainer "voidnxlabs <dev@voidnxlabs.io>" \
+        --description "voidnxlabs $project" \
+        --url "https://github.com/VoidNxSEC" \
+        --license "Apache-2.0" \
+        --prefix /usr/bin \
+        --package "$DIST_DIR/${bin}_${VERSION}_${ARCH}.deb" \
+        "target/release/$bin=/usr/bin/$bin"
+    fi
   )
   log "  -> $DIST_DIR/${bin}_${VERSION}_${ARCH}.deb"
 }
@@ -69,7 +78,7 @@ build_python_deb() {
   local entrypoint="$3"
   log "Building $project Python .deb..."
 
-  if [ ! -d "$REPO_ROOT/$project" ]; then
+  if [ ! -d "$WORKSPACE_ROOT/$project" ]; then
     log "  Skipping $project — directory not found"
     return 0
   fi
@@ -79,7 +88,7 @@ build_python_deb() {
   mkdir -p "$staging/opt/$service_name"
 
   (
-    cd "$REPO_ROOT/$project"
+    cd "$WORKSPACE_ROOT/$project"
     python3 -m venv "$staging/opt/$service_name/venv"
     "$staging/opt/$service_name/venv/bin/pip" install -q --upgrade pip
     "$staging/opt/$service_name/venv/bin/pip" install -q .
@@ -114,7 +123,7 @@ UNIT
     --description "voidnxlabs $project" \
     --url "https://github.com/VoidNxSEC" \
     --license "Apache-2.0" \
-    --after-install "$REPO_ROOT/packaging/deb/postinst.sh" \
+    --after-install "$SENTINEL_ROOT/packaging/deb/postinst.sh" \
     --package "$DIST_DIR/${service_name}_${VERSION}_all.deb" \
     -C "$staging" \
     opt lib
@@ -130,10 +139,10 @@ build_rust_deb "securellm-bridge"   "securellm-bridge"
 build_rust_deb "phantom-nx"         "phantom-nx"
 
 # Go binary (cross-compile to produce Linux binary, then wrap with fpm)
-if [ -d "$REPO_ROOT/owasaka" ]; then
+if [ -d "$WORKSPACE_ROOT/owasaka" ]; then
   log "Building owasaka (Go) .deb..."
   (
-    cd "$REPO_ROOT/owasaka"
+    cd "$WORKSPACE_ROOT/owasaka"
     GOOS=linux GOARCH=amd64 go build -o "$DIST_DIR/owasaka" ./cmd/owasaka/... 2>/dev/null || \
     GOOS=linux GOARCH=amd64 go build -o "$DIST_DIR/owasaka" ./... || true
   )

@@ -8,12 +8,18 @@ import subprocess
 import pytest
 import httpx
 
+from test_runtime import compose_file, request_kwargs, service_url
+
 pytestmark = pytest.mark.chaos
+
+COMPOSE_FILE = compose_file()
+NATS_HEALTH_URL = service_url("SENTINEL_NATS_HEALTH_URL", "http://localhost:8222/healthz")
+OWASAKA_URL = service_url("SENTINEL_OWASAKA_URL", "http://localhost:8080")
 
 
 def _docker_compose(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["docker", "compose", "-f", "../docker-compose.yml"] + args,
+        ["docker", "compose", "-f", str(COMPOSE_FILE)] + args,
         capture_output=True,
         text=True,
     )
@@ -21,7 +27,7 @@ def _docker_compose(args: list[str]) -> subprocess.CompletedProcess:
 
 def _nats_healthy() -> bool:
     try:
-        resp = httpx.get("http://localhost:8222/healthz", timeout=3.0)
+        resp = httpx.get(NATS_HEALTH_URL, **request_kwargs(NATS_HEALTH_URL, timeout=3.0))
         return resp.status_code == 200
     except Exception:
         return False
@@ -29,7 +35,7 @@ def _nats_healthy() -> bool:
 
 def _owasaka_healthy() -> bool:
     try:
-        resp = httpx.get("http://localhost:8080/health", timeout=3.0)
+        resp = httpx.get(f"{OWASAKA_URL}/health", **request_kwargs(OWASAKA_URL, timeout=3.0))
         return resp.status_code == 200
     except Exception:
         return False

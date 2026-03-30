@@ -162,7 +162,7 @@ Status:
 
 ### Execution Order
 
-Run the blocks in this order:
+The release gate was executed in this order:
 1. Block A — Security Completion
 2. Block B — Secrets Gate
 3. Block C — Metrics Completion
@@ -387,7 +387,7 @@ Why this order:
 ### 5.3 — Deploy
 - [x] `packaging/nix/nixos-module.nix` — NixOS systemd services module
 - [x] `docker-compose.yml` production profiles with restart policies and healthchecks
-- [ ] Rollback procedure documented
+- [x] Rollback procedure documented (`sentinel/docs/runbooks/rollback.md`)
 
 ---
 
@@ -451,7 +451,7 @@ execution and release gating.
 - [x] NATS JetStream streams: `spectre/config/jetstream-streams.json` (7 streams: INGEST/COGNITION/LLM/NETWORK/SYSTEM/INFERENCE/COST)
 - [x] JetStream init script: `sentinel/scripts/init-jetstream.sh` (idempotent, idempotent create)
 - [x] Rollback runbook: `sentinel/docs/runbooks/rollback.md` (Docker/NixOS/DB/NATS/SOPS/provider)
-- [ ] Git-based config backup (ADR ledger is already git-versioned)
+- [x] Git-based config backup: `sentinel/scripts/backup-config-git.sh` emits `git bundle` + tracked-change evidence for `master`, `sentinel`, and `spectre`
 
 ### 7.3 — SLO validation ✅
 - [x] P99 latency targets: phantom-api < 500ms, spooknix transcribe < 30s/min-audio
@@ -473,13 +473,13 @@ execution and release gating.
 ### 8.2 — Linux (Debian/Ubuntu)
 - [x] `packaging/deb/build.sh` — builds `.deb` via cargo-deb + fpm
 - [x] `packaging/deb/postinst.sh` — service user + systemd unit setup
-- [ ] GitHub Releases asset upload (wired in `release.yml`)
+- [x] GitHub Releases asset upload (`release.yml` downloads `deb-packages` artifacts and attaches `*.deb`)
 - [ ] Optional: Launchpad PPA
 
 ### 8.3 — Linux (RHEL/Fedora)
 - [x] `packaging/rpm/build.sh` — builds `.rpm` via fpm
 - [ ] Copr repository for Fedora users
-- [ ] GitHub Releases asset upload
+- [x] GitHub Releases asset upload (`release.yml` downloads `rpm-packages` artifacts and attaches `*.rpm`)
 
 ### 8.4 — macOS (Darwin aarch64 + x86_64)
 - [x] `packaging/macos/build.sh` — universal binary via `lipo`

@@ -10,24 +10,27 @@ Validates:
 
 import json
 import asyncio
+import os
 import pytest
 import httpx
 
+from test_runtime import client_kwargs, request_kwargs
+
 pytestmark = pytest.mark.e2e
 
-SECURELLM_URL = "http://localhost:8081"
-PHANTOM_URL = "http://localhost:8008"
+SECURELLM_URL = os.getenv("SENTINEL_SECURELLM_URL", "http://localhost:8081")
+PHANTOM_URL = os.getenv("SENTINEL_PUBLIC_PHANTOM_URL", "http://localhost:8008")
 
 
 @pytest.fixture
 async def bridge_client():
-    async with httpx.AsyncClient(base_url=SECURELLM_URL, timeout=30.0) as c:
+    async with httpx.AsyncClient(**client_kwargs(SECURELLM_URL, timeout=30.0)) as c:
         yield c
 
 
 @pytest.fixture
 async def phantom_client():
-    async with httpx.AsyncClient(base_url=PHANTOM_URL, timeout=30.0) as c:
+    async with httpx.AsyncClient(**client_kwargs(PHANTOM_URL, timeout=30.0)) as c:
         yield c
 
 
@@ -35,7 +38,10 @@ def _skip_if_bridge_down(bridge_client_sync_url: str = SECURELLM_URL) -> None:
     """Helper: synchronously check bridge availability (for non-async skips)."""
     import httpx as _httpx
     try:
-        _httpx.get(f"{bridge_client_sync_url}/api/health", timeout=2.0)
+        _httpx.get(
+            f"{bridge_client_sync_url}/api/health",
+            **request_kwargs(bridge_client_sync_url, timeout=2.0),
+        )
     except Exception:
         pytest.skip("securellm-bridge not running (start with --profile intelligence)")
 
