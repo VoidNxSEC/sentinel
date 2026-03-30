@@ -167,6 +167,7 @@ Run the gates in this order:
 - Batch 3: `sentinel/docs/runbooks/batch-3-security.md`
 - Gate 5: `sentinel/docs/runbooks/gate-5-secrets.md`
 - Batch 5: `sentinel/docs/runbooks/batch-5-recovery.md`
+- Batch 6: `sentinel/docs/runbooks/batch-6-go-no-go.md`
 - Batch 4 Metrics: `sentinel/docs/runbooks/batch-4-metrics.md`
 - Batch 4 Logging: `sentinel/docs/runbooks/batch-4-logging.md`
 - Batch 4 Alerting: `sentinel/docs/runbooks/batch-4-alerting.md`

@@ -43,6 +43,7 @@ Current operational status:
 - Batch 2: `PASS` on 2026-03-30 (`9 passed, 3 skipped`)
 - Batch 3: `PASS` on 2026-03-30 (`14 passed`, `phantom TLS PASS`, `NATS mTLS wiring readiness PASS`)
 - Batch 5: `PASS` on 2026-03-30 (`backup archive PASS`, `core rollback PASS`, `NATS/Phantom health PASS`)
+- Batch 6: `GO` on 2026-03-30 (`all required gates PASS`, `core live health PASS`)
 - Gate 5 Secrets: `PASS` on 2026-03-30 (`4 passed, 0 failed`)
 - Block C Metrics: `PASS` on 2026-03-30 (`5 passed, 0 failed`)
 - Block D Logging: `PASS` on 2026-03-30 (`4 passed, 0 failed`)
@@ -167,6 +168,8 @@ Run the blocks in this order:
 3. Block C — Metrics Completion
 4. Block D — Logging
 5. Block E — Alerting
+6. Block F — Recovery & Documentation
+7. Batch 6 — Go / No-Go
 
 Why this order:
 - security and secrets are hard deploy gates
@@ -526,9 +529,8 @@ M5 (CI/CD) ✅  ->  M6 (ML pipeline) ✅  ->  M7+M8 (deploy + dist) ← NEXT (po
 **Milestones M1 through M4 are operationally closed.**
 
 **Immediate blockers:**
-1. Consolidate final project documentation updates
-2. Run Batch 6 go/no-go review in one clean operational window
-3. Track the deferred `ai-agent-os -> phantom-soc UI` thermal path in M7
+1. Track the deferred `ai-agent-os -> phantom-soc UI` thermal path in M7
+2. Keep rerunnable evidence current if core configuration changes before deploy
 
 ---
 
