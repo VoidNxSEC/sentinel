@@ -19,7 +19,6 @@ Run:
 
 import asyncio
 import os
-import re
 
 import nats
 import pytest
@@ -112,11 +111,43 @@ async def _connect_as(service: str) -> nats.aio.client.Client | None:
 
     nc = await nats.connect(
         NATS_URL,
-        nkeys_seed=seed.encode(),
+        nkeys_seed_str=seed,
         error_cb=error_cb,
         connect_timeout=5,
+        allow_reconnect=False,
     )
     return nc
+
+
+async def _assert_publish_denied(service: str, subjects: list[str]):
+    seed = _load_seed(service)
+    if seed is None:
+        pytest.skip(f"{service} NKey seed not configured")
+
+    violations: list[str] = []
+    errors: list[str] = []
+
+    async def error_cb(exc):
+        errors.append(str(exc))
+
+    nc = await nats.connect(
+        NATS_URL,
+        nkeys_seed_str=seed,
+        error_cb=error_cb,
+        connect_timeout=5,
+        allow_reconnect=False,
+    )
+    try:
+        for subject in subjects:
+            errors.clear()
+            await nc.publish(subject, b'{"test": true}')
+            await asyncio.sleep(0.2)
+            if not any("permissions violation for publish" in err and subject in err for err in errors):
+                violations.append(subject)
+    finally:
+        await nc.drain()
+
+    assert not violations, f"{service} was allowed to publish to denied subjects: {violations}"
 
 
 def _nats_auth_enabled() -> bool:
@@ -167,7 +198,12 @@ async def test_owasaka_nkey_connect():
 
     nc = None
     try:
-        nc = await nats.connect(NATS_URL, nkeys_seed=seed.encode(), connect_timeout=5)
+        nc = await nats.connect(
+            NATS_URL,
+            nkeys_seed_str=seed,
+            connect_timeout=5,
+            allow_reconnect=False,
+        )
         assert nc.is_connected, "owasaka connected but not in connected state"
     except Exception as exc:
         pytest.fail(f"owasaka NKey auth failed: {exc}")
@@ -192,7 +228,12 @@ async def test_all_services_nkey_connect():
 
         nc = None
         try:
-            nc = await nats.connect(NATS_URL, nkeys_seed=seed.encode(), connect_timeout=5)
+            nc = await nats.connect(
+                NATS_URL,
+                nkeys_seed_str=seed,
+                connect_timeout=5,
+                allow_reconnect=False,
+            )
             if not nc.is_connected:
                 failed.append(f"{svc}: not connected after connect()")
         except Exception as exc:
@@ -250,27 +291,7 @@ async def test_owasaka_publish_allowed():
 @pytest.mark.asyncio
 async def test_owasaka_publish_denied():
     """owasaka cannot publish to system.* or ingest.* (ACL enforced)."""
-    nc = await _connect_as("owasaka")
-    if nc is None:
-        pytest.skip("owasaka NKey seed not configured")
-
-    violations = []
-    try:
-        for subject in ACL_SPEC["owasaka"]["must_deny"]:
-            try:
-                await nc.publish(subject, b'{"test": true}')
-                await nc.flush()
-                # If publish succeeds, NATS didn't enforce the ACL
-                violations.append(subject)
-            except Exception:
-                pass  # expected: NATS rejects with permissions violation
-    finally:
-        await nc.drain()
-
-    assert not violations, (
-        f"owasaka was allowed to publish to denied subjects: {violations}\n"
-        "Check nats-server.conf ACL rules."
-    )
+    await _assert_publish_denied("owasaka", ACL_SPEC["owasaka"]["must_deny"])
 
 
 @pytest.mark.e2e
@@ -295,25 +316,7 @@ async def test_ai_agent_os_publish_allowed():
 @pytest.mark.asyncio
 async def test_ai_agent_os_publish_denied():
     """ai-agent-os cannot publish to network.* (ACL enforced)."""
-    nc = await _connect_as("ai-agent-os")
-    if nc is None:
-        pytest.skip("ai-agent-os NKey seed not configured")
-
-    violations = []
-    try:
-        for subject in ACL_SPEC["ai-agent-os"]["must_deny"]:
-            try:
-                await nc.publish(subject, b'{"test": true}')
-                await nc.flush()
-                violations.append(subject)
-            except Exception:
-                pass
-    finally:
-        await nc.drain()
-
-    assert not violations, (
-        f"ai-agent-os was allowed to publish to denied subjects: {violations}"
-    )
+    await _assert_publish_denied("ai-agent-os", ACL_SPEC["ai-agent-os"]["must_deny"])
 
 
 @pytest.mark.e2e
@@ -338,25 +341,7 @@ async def test_phantom_soc_subscribe_allowed():
 @pytest.mark.asyncio
 async def test_phantom_soc_publish_denied():
     """phantom-soc (consumer-only) cannot publish to event subjects."""
-    nc = await _connect_as("phantom-soc")
-    if nc is None:
-        pytest.skip("phantom-soc NKey seed not configured")
-
-    violations = []
-    try:
-        for subject in ACL_SPEC["phantom-soc"]["must_deny"]:
-            try:
-                await nc.publish(subject, b'{"test": true}')
-                await nc.flush()
-                violations.append(subject)
-            except Exception:
-                pass
-    finally:
-        await nc.drain()
-
-    assert not violations, (
-        f"phantom-soc (consumer-only) was allowed to publish: {violations}"
-    )
+    await _assert_publish_denied("phantom-soc", ACL_SPEC["phantom-soc"]["must_deny"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────

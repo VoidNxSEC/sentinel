@@ -33,6 +33,7 @@ Run the remaining production work in these batches:
 - **Batch 2 — Live E2E**: Spectre E2E, phantom-soc E2E, critical event-flow proof
   (`sentinel/docs/runbooks/batch-2-live-e2e.md`)
 - **Batch 3 — Security**: NATS auth E2E, TLS/mTLS validation, secret loading validation
+  (`sentinel/docs/runbooks/batch-3-security.md`)
 - **Batch 4 — Observability**: structured logs, log aggregation, correlation IDs
 - **Batch 5 — Recovery + Docs**: rollback exercise, config backup, project documentation updates
 - **Batch 6 — Go/No-Go**: evidence review, open-risk review, final release decision
@@ -148,21 +149,21 @@ Run the remaining production work in these batches:
 - [x] `.env.example`: all 6 `*_NKEY_SEED` vars documented
 - [x] flake: `nix run .#nats` loads auth config if present; `nix run .#nkeys-gen` regenerates all seeds
 - [x] Integration tests: `sentinel/scenarios/test_nats_auth.py` — connection auth, ACL allow/deny, cross-service flows
-- [ ] **Live validation**: run `pytest scenarios/test_nats_auth.py -m e2e` against NATS with auth config loaded
+- [x] **Live validation**: passed against live stack on 2026-03-30 (`14 passed`)
 - [x] SOPS encryption of seed files (M3.3 — done)
 
 ### 3.2 — TLS everywhere ✅
 - [x] Self-signed CA (`secrets/tls/ca.crt`) + per-service EC P-256 certs (7 services)
   - SANs include Docker DNS names, spectre-net IPs, and localhost
   - Cert rotation script: `sentinel/scripts/rotate-tls.sh`
-- [x] NATS mTLS (`spectre/config/nats-server.conf` — tls block with verify: true)
+- [ ] NATS mTLS live wiring (`spectre/config/nats-server.conf` + client TLS wiring) still pending in local compose
   - Clients must present cert signed by spectre CA
   - Certs mounted in compose: `secrets/tls/{nats,ca}.{crt,key}`
 - [x] Phantom API behind TLS — Caddy reverse proxy on :8008
   - `spectre/config/Caddyfile` — terminates TLS, proxies to phantom-api:8000
   - `phantom-proxy` service in docker-compose with cert volumes
 - [x] Spooknix cert generated (`secrets/tls/spooknix.{crt,key}`) — ready for server config
-- [ ] **Live validation**: boot compose with TLS, verify `curl --cacert` connects
+- [ ] **Live validation**: partial on 2026-03-30 (`phantom TLS PASS`, `NATS mTLS wiring NO-GO`)
 - [ ] Production: replace self-signed with Let's Encrypt / Vault PKI
 
 ### 3.3 — Secrets management ✅
