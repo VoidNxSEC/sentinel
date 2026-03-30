@@ -14,7 +14,7 @@ This gate covers:
 - SOPS baseline and encrypted artifacts
 - remaining runtime secret targets (`HF_TOKEN`, `DATABASE_URL`, provider keys)
 - plaintext secret regression checks
-- runtime bundle presence for production secrets
+- runtime bundle presence for production secrets (`secrets/runtime.env.enc`)
 
 ---
 
@@ -47,7 +47,17 @@ If any criterion fails, Gate 5 is `NO-GO`.
 
 ---
 
-## Current Expected Failure
+## Runtime Bundle
 
-This gate is expected to fail until the non-NKey runtime secrets are moved into encrypted bundles
-and wired into the live stack.
+Current baseline bundle:
+- `secrets/runtime.env.enc`
+
+Target entries:
+- `HF_TOKEN`
+- `DATABASE_URL`
+- `DEEPSEEK_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `OPENAI_API_KEY`
+
+This closes the encrypted bundle baseline. Per-service adoption is still only complete when the live
+stack consumes these values through documented runtime injection.

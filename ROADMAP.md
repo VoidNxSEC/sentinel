@@ -281,7 +281,8 @@ Why this order:
 - [x] TLS rotation script: `sentinel/scripts/rotate-tls.sh`
   - Regenerates CA + 7 service certs with correct SANs
 - [x] No plaintext secrets in git — all sensitive files gitignored, encrypted copies committed
-- [ ] HF_TOKEN, DATABASE_URL, API keys → SOPS (deferred to per-project adoption)
+- [x] Runtime secret bundle baseline: `secrets/runtime.env.enc` for `HF_TOKEN`, `DATABASE_URL`, provider keys
+- [ ] HF_TOKEN, DATABASE_URL, API keys → live per-project SOPS adoption and runtime injection
 
 ### 3.4 — SecureLLM Bridge integration ✅
 - [x] `phantom/api/cortex_api.py` — `_call_via_bridge()` routes all providers through bridge
