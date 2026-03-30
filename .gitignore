@@ -72,3 +72,4 @@ logs/
 
 # Project specific
 .project-summary.md
+ssh_sessions.db
