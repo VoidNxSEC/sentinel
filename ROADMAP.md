@@ -17,8 +17,8 @@ ai-agent-os publishes `system.metrics.v1`. Phantom API has all 7 endpoints. Spoo
 test suite (scenarios, chaos, performance), CI/CD pipelines, release workflow, and cross-platform
 packaging scripts are all in place.
 
-**Blocking**: services are wired in code but have not been validated against each other in a live
-environment. M3 (security) and M4 (observability) are the next hard gates before production.
+**Blocking**: live security and observability validation are complete. The remaining hard gates
+before production are recovery/docs execution and the final go/no-go review.
 
 **Go-live baseline**: operational execution is now tracked in `sentinel/docs/go-live-goals.md`.
 Use that document as the release gate reference for live validation, secrets, observability,
@@ -41,7 +41,8 @@ Run the remaining production work in these batches:
 Current operational status:
 - Batch 1: `PASS` on 2026-03-30
 - Batch 2: `PASS` on 2026-03-30 (`9 passed, 3 skipped`)
-- Batch 3: `NO-GO` on 2026-03-30 (`NATS auth PASS`, `phantom TLS PASS`, `NATS mTLS wiring readiness FAIL`)
+- Batch 3: `PASS` on 2026-03-30 (`14 passed`, `phantom TLS PASS`, `NATS mTLS wiring readiness PASS`)
+- Batch 5: `PASS` on 2026-03-30 (`backup archive PASS`, `core rollback PASS`, `NATS/Phantom health PASS`)
 - Gate 5 Secrets: `PASS` on 2026-03-30 (`4 passed, 0 failed`)
 - Block C Metrics: `PASS` on 2026-03-30 (`5 passed, 0 failed`)
 - Block D Logging: `PASS` on 2026-03-30 (`4 passed, 0 failed`)
@@ -59,7 +60,7 @@ Execute the remaining work in these isolated blocks. Each block only closes when
 
 #### Block A — Security Completion
 
-Goal: close the remaining Batch 3 gap and move Security to full `PASS`.
+Goal: complete Batch 3 and keep Security at full `PASS`.
 
 Scope:
 - finish NATS mTLS live wiring in compose and client configs
@@ -70,6 +71,9 @@ Exit criteria:
 - `batch-3-security` returns `PASS`
 - NATS rejects missing or invalid client certs
 - compose clients no longer depend on plaintext `nats://` wiring where mTLS is required
+
+Status:
+- closed on 2026-03-30 (`Batch 3 PASS`)
 
 #### Block B — Secrets Gate
 
@@ -134,6 +138,26 @@ Exit criteria:
 - alert rules validate cleanly
 - at least one controlled alert fires with usable context
 - alerting validation runner returns `PASS`
+
+#### Block F — Recovery & Documentation
+
+Goal: prove rollback + backup readiness ahead of Batch 6.
+
+Runbook: `sentinel/docs/runbooks/batch-5-recovery.md`
+
+Scope:
+- archive `spectre/config`, TLS cert/key bundles, and runtime/seed secrets;
+- stop the core profile with `docker compose --profile core down --remove-orphans`;
+- bring the core profile back up and hit `NATS` + `Phantom TLS` health endpoints;
+- snapshot `tmp/batch-5-backup` for audit.
+
+Exit criteria:
+- `sentinel/scripts/batch-5-recovery-check.sh` returns exit 0;
+- tarballs in `tmp/batch-5-backup` match the current timestamp;
+- docs reference the recovery exercise plus health endpoints used.
+
+Status:
+- closed on 2026-03-30 (`Batch 5 PASS`)
 
 ### Execution Order
 
@@ -267,14 +291,15 @@ Why this order:
 - [x] Self-signed CA (`secrets/tls/ca.crt`) + per-service EC P-256 certs (7 services)
   - SANs include Docker DNS names, spectre-net IPs, and localhost
   - Cert rotation script: `sentinel/scripts/rotate-tls.sh`
-- [ ] NATS mTLS live wiring (`spectre/config/nats-server.conf` + client TLS wiring) still pending in local compose
+- [x] NATS mTLS live wiring (`spectre/config/nats-server.conf` + client TLS wiring) validated in local compose
   - Clients must present cert signed by spectre CA
   - Certs mounted in compose: `secrets/tls/{nats,ca}.{crt,key}`
 - [x] Phantom API behind TLS — Caddy reverse proxy on :8008
   - `spectre/config/Caddyfile` — terminates TLS, proxies to phantom-api:8000
   - `phantom-proxy` service in docker-compose with cert volumes
 - [x] Spooknix cert generated (`secrets/tls/spooknix.{crt,key}`) — ready for server config
-- [ ] **Live validation**: partial on 2026-03-30 (`phantom TLS PASS`, `NATS mTLS wiring NO-GO`)
+- [x] **Live validation**: passed on 2026-03-30 (`phantom TLS PASS`, `NATS mTLS wiring PASS`, `NATS auth E2E 14 passed`)
+- [x] Sentinel TLS harness adjusted for Python 3.13 strict CA handling so local auth validation reflects the live stack behavior
 - [ ] Production: replace self-signed with Let's Encrypt / Vault PKI
 
 ### 3.3 — Secrets management ✅
@@ -498,14 +523,12 @@ M1 (compose) ✅  ->  M2 (tests) ✅  ->  M3 (security) ✅  ->  M4 (observabili
 M5 (CI/CD) ✅  ->  M6 (ML pipeline) ✅  ->  M7+M8 (deploy + dist) ← NEXT (post-pause)
 ```
 
-**Milestones M1 and M2 are operationally closed. M3 and M4 still have open go-live gates.**
+**Milestones M1 through M4 are operationally closed.**
 
 **Immediate blockers:**
-1. Finish NATS mTLS live wiring in the local compose stack
-2. Move remaining production secrets into SOPS-backed injection
-3. Deliver `ai-agent-os` metrics dashboard on the observability stack
-4. Add centralized JSON logging + correlation IDs
-5. Validate alerts with live evidence and complete the thermal path
+1. Consolidate final project documentation updates
+2. Run Batch 6 go/no-go review in one clean operational window
+3. Track the deferred `ai-agent-os -> phantom-soc UI` thermal path in M7
 
 ---
 

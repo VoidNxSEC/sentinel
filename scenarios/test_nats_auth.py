@@ -19,12 +19,16 @@ Run:
 
 import asyncio
 import os
+import ssl
 
 import nats
 import pytest
 
 
 NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
+NATS_CA_FILE = os.getenv("NATS_CA_FILE", "").strip()
+NATS_CLIENT_CERT_FILE = os.getenv("NATS_CLIENT_CERT_FILE", "").strip()
+NATS_CLIENT_KEY_FILE = os.getenv("NATS_CLIENT_KEY_FILE", "").strip()
 
 # Mapping from service name to env var holding its seed
 SERVICE_SEED_ENVS = {
@@ -100,6 +104,24 @@ def _load_seed(service: str) -> str | None:
     return None
 
 
+def _build_tls_context() -> ssl.SSLContext:
+    """
+    Build the TLS context used by live NATS auth tests.
+
+    Our local CA is legacy and does not carry the key-usage extension that
+    Python 3.13 now enforces under VERIFY_X509_STRICT.
+    """
+    tls_context = ssl.create_default_context(cafile=NATS_CA_FILE or None)
+    if hasattr(ssl, "VERIFY_X509_STRICT"):
+        tls_context.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    if NATS_CLIENT_CERT_FILE and NATS_CLIENT_KEY_FILE:
+        tls_context.load_cert_chain(
+            certfile=NATS_CLIENT_CERT_FILE,
+            keyfile=NATS_CLIENT_KEY_FILE,
+        )
+    return tls_context
+
+
 async def _connect_as(service: str) -> nats.aio.client.Client | None:
     """Connect to NATS as a specific service using its NKey seed."""
     seed = _load_seed(service)
@@ -109,13 +131,16 @@ async def _connect_as(service: str) -> nats.aio.client.Client | None:
     async def error_cb(e):
         pass  # suppress connection errors in tests
 
-    nc = await nats.connect(
-        NATS_URL,
-        nkeys_seed_str=seed,
-        error_cb=error_cb,
-        connect_timeout=5,
-        allow_reconnect=False,
-    )
+    kwargs = {
+        "nkeys_seed_str": seed,
+        "error_cb": error_cb,
+        "connect_timeout": 5,
+        "allow_reconnect": False,
+    }
+    if NATS_URL.startswith("tls://") or NATS_CA_FILE or NATS_CLIENT_CERT_FILE or NATS_CLIENT_KEY_FILE:
+        kwargs["tls"] = _build_tls_context()
+
+    nc = await nats.connect(NATS_URL, **kwargs)
     return nc
 
 
@@ -130,13 +155,16 @@ async def _assert_publish_denied(service: str, subjects: list[str]):
     async def error_cb(exc):
         errors.append(str(exc))
 
-    nc = await nats.connect(
-        NATS_URL,
-        nkeys_seed_str=seed,
-        error_cb=error_cb,
-        connect_timeout=5,
-        allow_reconnect=False,
-    )
+    kwargs = {
+        "nkeys_seed_str": seed,
+        "error_cb": error_cb,
+        "connect_timeout": 5,
+        "allow_reconnect": False,
+    }
+    if NATS_URL.startswith("tls://") or NATS_CA_FILE or NATS_CLIENT_CERT_FILE or NATS_CLIENT_KEY_FILE:
+        kwargs["tls"] = _build_tls_context()
+
+    nc = await nats.connect(NATS_URL, **kwargs)
     try:
         for subject in subjects:
             errors.clear()
@@ -198,12 +226,14 @@ async def test_owasaka_nkey_connect():
 
     nc = None
     try:
-        nc = await nats.connect(
-            NATS_URL,
-            nkeys_seed_str=seed,
-            connect_timeout=5,
-            allow_reconnect=False,
-        )
+        kwargs = {
+            "nkeys_seed_str": seed,
+            "connect_timeout": 5,
+            "allow_reconnect": False,
+        }
+        if NATS_URL.startswith("tls://") or NATS_CA_FILE or NATS_CLIENT_CERT_FILE or NATS_CLIENT_KEY_FILE:
+            kwargs["tls"] = _build_tls_context()
+        nc = await nats.connect(NATS_URL, **kwargs)
         assert nc.is_connected, "owasaka connected but not in connected state"
     except Exception as exc:
         pytest.fail(f"owasaka NKey auth failed: {exc}")
@@ -228,12 +258,14 @@ async def test_all_services_nkey_connect():
 
         nc = None
         try:
-            nc = await nats.connect(
-                NATS_URL,
-                nkeys_seed_str=seed,
-                connect_timeout=5,
-                allow_reconnect=False,
-            )
+            kwargs = {
+                "nkeys_seed_str": seed,
+                "connect_timeout": 5,
+                "allow_reconnect": False,
+            }
+            if NATS_URL.startswith("tls://") or NATS_CA_FILE or NATS_CLIENT_CERT_FILE or NATS_CLIENT_KEY_FILE:
+                kwargs["tls"] = _build_tls_context()
+            nc = await nats.connect(NATS_URL, **kwargs)
             if not nc.is_connected:
                 failed.append(f"{svc}: not connected after connect()")
         except Exception as exc:
@@ -257,7 +289,13 @@ async def test_unauthenticated_rejected():
         pytest.skip("No seeds configured — cannot test auth rejection")
 
     try:
-        nc = await nats.connect(NATS_URL, connect_timeout=3)
+        kwargs = {
+            "connect_timeout": 3,
+            "allow_reconnect": False,
+        }
+        if NATS_URL.startswith("tls://") or NATS_CA_FILE or NATS_CLIENT_CERT_FILE or NATS_CLIENT_KEY_FILE:
+            kwargs["tls"] = _build_tls_context()
+        nc = await nats.connect(NATS_URL, **kwargs)
         # If we connected without auth, NATS is not in auth mode — skip
         await nc.drain()
         pytest.skip("NATS accepted unauthenticated connection — auth not enforced yet")

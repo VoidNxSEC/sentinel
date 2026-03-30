@@ -23,6 +23,10 @@ fail() {
 
 check_nats_auth() {
   cd "${SENTINEL_DIR}"
+  NATS_URL="tls://localhost:4222" \
+  NATS_CA_FILE="${ROOT_DIR}/secrets/tls/ca.crt" \
+  NATS_CLIENT_CERT_FILE="${ROOT_DIR}/secrets/tls/owasaka.crt" \
+  NATS_CLIENT_KEY_FILE="${ROOT_DIR}/secrets/tls/owasaka.key" \
   poetry run pytest scenarios/test_nats_auth.py -m e2e -v
 }
 
