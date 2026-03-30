@@ -2,7 +2,7 @@
 
 **Owner**: kernelcore
 **Created**: 2026-03-28
-**Updated**: 2026-03-29
+**Updated**: 2026-03-30
 **Target**: Production-ready event-driven AI operations platform
 
 ---
@@ -19,6 +19,22 @@ packaging scripts are all in place.
 
 **Blocking**: services are wired in code but have not been validated against each other in a live
 environment. M3 (security) and M4 (observability) are the next hard gates before production.
+
+**Go-live baseline**: operational execution is now tracked in `sentinel/docs/go-live-goals.md`.
+Use that document as the release gate reference for live validation, secrets, observability,
+rollback, and project documentation updates.
+
+### Operational Execution Batches
+
+Run the remaining production work in these batches:
+
+- **Batch 1 — Bring-up + Smoke**: full stack boot, healthchecks, endpoint validation
+  (`sentinel/docs/runbooks/batch-1-bringup-smoke.md`)
+- **Batch 2 — Live E2E**: Spectre E2E, phantom-soc E2E, critical event-flow proof
+- **Batch 3 — Security**: NATS auth E2E, TLS/mTLS validation, secret loading validation
+- **Batch 4 — Observability**: structured logs, log aggregation, correlation IDs
+- **Batch 5 — Recovery + Docs**: rollback exercise, config backup, project documentation updates
+- **Batch 6 — Go/No-Go**: evidence review, open-risk review, final release decision
 
 ---
 
@@ -271,6 +287,9 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 ## Milestone 7 — Production Deploy
 
 **Goal**: Running on real hardware, serving real users.
+
+**Execution note**: use `sentinel/docs/go-live-goals.md` as the operational checklist for batch
+execution and release gating.
 
 ### 7.1 — NixOS deployment ✅
 - [x] NixOS configuration module for full stack (`packaging/nix/nixos-module.nix`)
