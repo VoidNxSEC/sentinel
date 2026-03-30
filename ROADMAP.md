@@ -43,6 +43,106 @@ Current operational status:
 - Batch 2: `PASS` on 2026-03-30 (`9 passed, 3 skipped`)
 - Batch 3: `NO-GO` on 2026-03-30 (`NATS auth PASS`, `phantom TLS PASS`, `NATS mTLS wiring readiness FAIL`)
 
+### Operational Attack Plan
+
+Execute the remaining work in these isolated blocks. Each block only closes when it has:
+- a dedicated runner or script
+- explicit `PASS` / `NO-GO` output
+- focused debug assertions for the failure mode
+- roadmap and runbook updates
+
+#### Block A — Security Completion
+
+Goal: close the remaining Batch 3 gap and move Security to full `PASS`.
+
+Scope:
+- finish NATS mTLS live wiring in compose and client configs
+- keep Phantom TLS validation green
+- keep NATS auth E2E green while mTLS is introduced
+
+Exit criteria:
+- `batch-3-security` returns `PASS`
+- NATS rejects missing or invalid client certs
+- compose clients no longer depend on plaintext `nats://` wiring where mTLS is required
+
+#### Block B — Secrets Gate
+
+Goal: complete Milestone `3.3` for real production secrets, not only NKeys/TLS material.
+
+Runbook: `sentinel/docs/runbooks/gate-5-secrets.md`
+
+Scope:
+- move `HF_TOKEN`, `DATABASE_URL`, and remaining provider/API secrets into SOPS
+- standardize secret injection across services
+- validate rotation and recovery path
+
+Exit criteria:
+- no production-required secret depends on ad hoc shell export
+- secret loading is documented and validated in the live stack
+- a dedicated secrets gate runner returns `PASS`
+
+#### Block C — Metrics Completion
+
+Goal: close `4.1` by delivering the `ai-agent-os` system metrics dashboard.
+
+Runbook: `sentinel/docs/runbooks/batch-4-metrics.md`
+
+Scope:
+- expose or bridge `system.metrics.v1` into Prometheus/Grafana
+- create a Grafana dashboard for CPU, memory, thermal, host, and publish cadence
+- link it to the existing observability stack
+
+Exit criteria:
+- dashboard is versioned in repo
+- live data from `ai-agent-os` is visible in Grafana
+- dashboard validation runner returns `PASS`
+
+#### Block D — Logging
+
+Goal: close `4.2` with operationally useful logs.
+
+Runbook: `sentinel/docs/runbooks/batch-4-logging.md`
+
+Scope:
+- structured JSON logs from required services
+- centralized aggregation (`Loki` or equivalent)
+- correlation IDs propagated across HTTP and NATS flows
+
+Exit criteria:
+- logs are machine-parseable and centrally queryable
+- one end-to-end flow can be traced by a single `correlation_id`
+- logging validation runner returns `PASS`
+
+#### Block E — Alerting
+
+Goal: close `4.3` operationally, including the deferred thermal path.
+
+Runbook: `sentinel/docs/runbooks/batch-4-alerting.md`
+
+Scope:
+- validate existing Prometheus alert rules against live services
+- wire alert evidence and triage context
+- implement or explicitly re-scope the `ai-agent-os` thermal alert path
+
+Exit criteria:
+- alert rules validate cleanly
+- at least one controlled alert fires with usable context
+- alerting validation runner returns `PASS`
+
+### Execution Order
+
+Run the blocks in this order:
+1. Block A — Security Completion
+2. Block B — Secrets Gate
+3. Block C — Metrics Completion
+4. Block D — Logging
+5. Block E — Alerting
+
+Why this order:
+- security and secrets are hard deploy gates
+- metrics must exist before logging/alerting evidence is useful
+- logging and correlation must exist before alerts can be triaged well
+
 ---
 
 ## Milestone 0 — Foundation (DONE)
@@ -386,13 +486,14 @@ M1 (compose) ✅  ->  M2 (tests) ✅  ->  M3 (security) ✅  ->  M4 (observabili
 M5 (CI/CD) ✅  ->  M6 (ML pipeline) ✅  ->  M7+M8 (deploy + dist) ← NEXT (post-pause)
 ```
 
-**M1–M6 complete. Strategic pause (ADR-0055) until 2026-05-01.**
+**Milestones M1 and M2 are operationally closed. M3 and M4 still have open go-live gates.**
 
-**M7 blockers (post-pause):**
-1. Fix docker-compose shared volume phantom↔cerebro (file_path accessibility)
-2. Production hardware provisioning (NixOS bare-metal or VPS)
-3. Live stack validation — run full test suite against compose with NKey+TLS
-4. M7 SLO validation suite against real traffic
+**Immediate blockers:**
+1. Finish NATS mTLS live wiring in the local compose stack
+2. Move remaining production secrets into SOPS-backed injection
+3. Deliver `ai-agent-os` metrics dashboard on the observability stack
+4. Add centralized JSON logging + correlation IDs
+5. Validate alerts with live evidence and complete the thermal path
 
 ---
 

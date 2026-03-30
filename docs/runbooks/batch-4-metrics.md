@@ -1,0 +1,47 @@
+# Batch 4 Runbook - Metrics Completion
+
+**Audience**: Operators and release owners
+**Scope**: Block C from the operational attack plan
+**Last updated**: 2026-03-30
+
+---
+
+## Goal
+
+Close the metrics gap by delivering the `ai-agent-os` system metrics dashboard and validating the
+observability baseline.
+
+This block covers:
+- observability stack wiring
+- dashboard artifact for `ai-agent-os`
+- dashboard content for CPU, memory, and thermal views
+- Prometheus live endpoint validation
+
+---
+
+## Run
+
+Preferred helper:
+
+```bash
+nix run .#batch-4-metrics
+```
+
+Direct execution:
+
+```bash
+cd /home/kernelcore/master/sentinel
+bash scripts/batch-4-metrics-check.sh
+```
+
+---
+
+## Pass Criteria
+
+Batch 4 Metrics is `PASS` only when:
+- the observability stack is wired in compose
+- the `ai-agent-os` dashboard file exists in repo
+- the dashboard contains real system-metrics panels
+- Prometheus live endpoints are reachable
+
+If any criterion fails, this block is `NO-GO`.
