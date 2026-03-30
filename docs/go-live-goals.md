@@ -163,6 +163,7 @@ Run the gates in this order:
 ## Batch Runbooks
 
 - Batch 1: `sentinel/docs/runbooks/batch-1-bringup-smoke.md`
+- Batch 2: `sentinel/docs/runbooks/batch-2-live-e2e.md`
 
 ---
 

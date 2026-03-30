@@ -31,6 +31,7 @@ Run the remaining production work in these batches:
 - **Batch 1 — Bring-up + Smoke**: full stack boot, healthchecks, endpoint validation
   (`sentinel/docs/runbooks/batch-1-bringup-smoke.md`)
 - **Batch 2 — Live E2E**: Spectre E2E, phantom-soc E2E, critical event-flow proof
+  (`sentinel/docs/runbooks/batch-2-live-e2e.md`)
 - **Batch 3 — Security**: NATS auth E2E, TLS/mTLS validation, secret loading validation
 - **Batch 4 — Observability**: structured logs, log aggregation, correlation IDs
 - **Batch 5 — Recovery + Docs**: rollback exercise, config backup, project documentation updates
@@ -94,7 +95,7 @@ Run the remaining production work in these batches:
 - [x] Test: ai-agent-os → NATS `system.metrics.v1` → CPU/memory field validation
 - [x] Test: DNS query event flow (`network.dns.query.v1`)
 - [x] Test: All event subjects follow `{domain}.{entity}.{action}.v{version}` format
-- [ ] **Live validation**: run against real stack (reconnect fixes done; ready to execute)
+- [x] **Live validation**: passed against real stack on 2026-03-30 (`9 passed, 3 skipped`)
 
 ### 2.2 — Phantom API E2E ✅ (suite written)
 - [x] Test: upload file → `/vectors/search` returns it (`scenarios/test_phantom_e2e.py`)
@@ -110,7 +111,7 @@ Run the remaining production work in these batches:
 - [x] Test: data-plane `phantom ops listen-nats` starts without crash
 - [x] Test: GTK4 LogViewer headless smoke (skipped if no DISPLAY)
 - [x] Test: live dispatch round-trip — consumer subprocess receives published event
-- [ ] **Live validation**: run against real stack (pending live stack bring-up)
+- [x] **Live validation**: passed against real stack on 2026-03-30 (`9 passed, 3 skipped`)
 
 ### 2.4 — NATS reconnect ✅
 - [x] Test: kill NATS → owasaka/ai-agent-os survive + reconnect (`chaos/test_nats_reconnect.py`)

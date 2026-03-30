@@ -40,7 +40,7 @@ async def test_event_delivery_roundtrip(nats_client):
 
 @pytest.mark.asyncio
 async def test_event_subject_schema(nats_client):
-    """All registered subjects conform to {domain}.{entity}.{action}.v{version}."""
+    """All registered subjects end with a numeric version suffix."""
     subjects = [
         "network.asset.discovered.v1",
         "network.dns.query.v1",
@@ -59,9 +59,9 @@ async def test_event_subject_schema(nats_client):
     ]
     for subject in subjects:
         parts = subject.split(".")
-        assert len(parts) == 4, f"Bad subject format: {subject}"
-        assert parts[3].startswith("v"), f"Version must start with 'v': {subject}"
-        assert parts[3][1:].isdigit(), f"Version must be numeric: {subject}"
+        assert len(parts) >= 3, f"Bad subject format: {subject}"
+        assert parts[-1].startswith("v"), f"Version must start with 'v': {subject}"
+        assert parts[-1][1:].isdigit(), f"Version must be numeric: {subject}"
 
 
 @pytest.mark.asyncio

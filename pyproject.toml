@@ -18,7 +18,8 @@ pytest-xdist = "^3.3.0"  # Parallel test execution
 httpx = "^0.24.1"
 
 # Event Bus (Optional - Scenario 9)
-nats-py = { version = "^2.3.0", optional = true }
+nats-py = { version = "^2.3.0", extras = ["nkeys"], optional = true }
+nkeys = { version = "*", optional = true }
 
 # Performance & Monitoring
 psutil = "^5.9.0"
@@ -34,7 +35,7 @@ ruff = "^0.1.0"  # Linting
 black = "^23.0.0"  # Formatting
 
 [tool.poetry.extras]
-nats = ["nats-py"]  # Install with: poetry install -E nats
+nats = ["nats-py", "nkeys"]  # Install with: poetry install -E nats
 
 [build-system]
 requires = ["poetry-core"]
