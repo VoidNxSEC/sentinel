@@ -38,6 +38,11 @@ Run the remaining production work in these batches:
 - **Batch 5 — Recovery + Docs**: rollback exercise, config backup, project documentation updates
 - **Batch 6 — Go/No-Go**: evidence review, open-risk review, final release decision
 
+Current operational status:
+- Batch 1: `PASS` on 2026-03-30
+- Batch 2: `PASS` on 2026-03-30 (`9 passed, 3 skipped`)
+- Batch 3: `NO-GO` on 2026-03-30 (`NATS auth PASS`, `phantom TLS PASS`, `NATS mTLS wiring readiness FAIL`)
+
 ---
 
 ## Milestone 0 — Foundation (DONE)
