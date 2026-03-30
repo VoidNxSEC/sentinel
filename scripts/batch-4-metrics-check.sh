@@ -48,8 +48,14 @@ check_ai_agent_dashboard_content() {
 }
 
 check_prometheus_live_endpoint() {
-  curl -fsS http://localhost:9090/-/healthy >/dev/null
-  curl -fsS http://localhost:9090/api/v1/targets >/dev/null
+  curl -fsS http://localhost:9090/-/healthy >/dev/null &&
+    curl -fsS http://localhost:9090/api/v1/targets >/dev/null
+}
+
+check_ai_agent_metrics_series() {
+  curl -fsS --get \
+    --data-urlencode 'query=ai_agent_cpu_percent' \
+    http://localhost:9090/api/v1/query | grep -q '"result":[[][{]'
 }
 
 echo "=== Batch 4 Metrics Checks ==="
@@ -59,6 +65,7 @@ run_check "Observability baseline wiring" check_observability_baseline
 run_check "ai-agent-os dashboard file exists" check_ai_agent_dashboard_exists
 run_check "ai-agent-os dashboard content" check_ai_agent_dashboard_content
 run_check "Prometheus live endpoint" check_prometheus_live_endpoint
+run_check "ai-agent-os metrics series available" check_ai_agent_metrics_series
 
 echo ""
 echo "Summary: ${PASS_COUNT} passed, ${FAIL_COUNT} failed"

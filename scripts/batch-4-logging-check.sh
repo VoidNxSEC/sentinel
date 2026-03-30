@@ -30,10 +30,13 @@ run_check() {
 }
 
 check_json_logging_wiring() {
-  grep -R -E 'tracing_subscriber|json\(' \
+  rg -n 'tracing_subscriber|json\(' \
     "${ROOT_DIR}/ai-agent-os" \
     "${ROOT_DIR}/securellm-bridge" \
-    "${ROOT_DIR}/spectre" >/dev/null
+    "${ROOT_DIR}/spectre" \
+    -g '!**/.git/**' \
+    -g '!**/target/**' \
+    -g '!**/.recover-safe/**' >/dev/null
 }
 
 check_log_aggregation_wiring() {
@@ -43,15 +46,20 @@ check_log_aggregation_wiring() {
 }
 
 check_correlation_id_wiring() {
-  grep -R -n 'correlation_id' \
+  rg -n 'correlation_id' \
     "${ROOT_DIR}/sentinel" \
     "${ROOT_DIR}/phantom" \
     "${ROOT_DIR}/spectre" \
-    "${ROOT_DIR}/securellm-bridge" >/dev/null
+    "${ROOT_DIR}/securellm-bridge" \
+    -g '!**/.git/**' \
+    -g '!**/target/**' \
+    -g '!**/.recover-safe/**' >/dev/null
 }
 
 check_log_stack_live_endpoints() {
-  curl -fsS http://localhost:3100/ready >/dev/null
+  curl -fsS http://localhost:3100/ready >/dev/null &&
+    curl -fsS --get --data-urlencode 'query={job="docker"}' \
+      http://localhost:3100/loki/api/v1/query >/dev/null
 }
 
 echo "=== Batch 4 Logging Checks ==="

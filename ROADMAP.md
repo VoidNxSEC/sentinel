@@ -42,6 +42,12 @@ Current operational status:
 - Batch 1: `PASS` on 2026-03-30
 - Batch 2: `PASS` on 2026-03-30 (`9 passed, 3 skipped`)
 - Batch 3: `NO-GO` on 2026-03-30 (`NATS auth PASS`, `phantom TLS PASS`, `NATS mTLS wiring readiness FAIL`)
+- Gate 5 Secrets: `PASS` on 2026-03-30 (`4 passed, 0 failed`)
+- Block C Metrics: `PASS` on 2026-03-30 (`5 passed, 0 failed`)
+- Block D Logging: `PASS` on 2026-03-30 (`4 passed, 0 failed`)
+- Block E Alerting: `PASS` on 2026-03-30 (`4 passed, 0 failed`)
+- Observability config incident resolved on 2026-03-30: local `spectre` bind-mounted configs with host mode `0600`
+  caused Prometheus/Loki startup failures; normalized to readable mounts and reflected in CI notes
 
 ### Operational Attack Plan
 
@@ -300,7 +306,7 @@ Why this order:
 
 ---
 
-## Milestone 4 — Observability ✅
+## Milestone 4 — Observability Operational PASS
 
 **Goal**: Know what's happening across the platform in real-time.
 
@@ -311,12 +317,15 @@ Why this order:
 - [x] owasaka: real `/metrics` endpoint — HTTP requests, events published, assets discovered, DNS queries
 - [x] Grafana dashboard: service health, phantom latency P50/P95/P99, NATS throughput, bridge requests, owasaka events
   (`spectre/config/grafana/dashboards/voidnxlabs-overview.json`)
-- [ ] ai-agent-os system metrics dashboard (CPU/mem/thermal from `system.metrics.v1`) — deferred to M7
+- [x] ai-agent-os system metrics dashboard (`spectre/config/grafana/dashboards/ai-agent-os-system-metrics.json`)
+- [x] `system.metrics.v1` → Prometheus bridge (`spectre/tools/ai-agent-metrics-bridge`)
+- [x] Batch 4 metrics gate returns `PASS` with live `ai_agent_*` series in Prometheus
 
-### 4.2 — Logging
-- [ ] Structured JSON logs from all Rust services (tracing-subscriber JSON formatter)
-- [ ] Loki or similar log aggregation
-- [ ] Correlation IDs propagated across NATS events
+### 4.2 — Logging ✅
+- [x] Structured JSON logging wiring validated in required services
+- [x] Loki + Promtail centralized log aggregation wired in observability compose profile
+- [x] Correlation ID wiring present across HTTP/NATS code paths
+- [x] Batch 4 logging gate returns `PASS` with live Loki query validation
 
 ### 4.3 — Alerting ✅
 - [x] 15 alert rules across 5 groups (`spectre/config/alerts.yml`):
@@ -324,6 +333,8 @@ Why this order:
   - SecureLLM Bridge provider failures + rate limits
   - NATS slow consumers + connection drops
   - owasaka event throughput
+- [x] Prometheus rule and alert endpoints validated live
+- [x] Batch 4 alerting gate returns `PASS`
 - [ ] Thermal threshold alert (ai-agent-os → NATS → phantom-soc UI) — deferred to M7
 - [x] E2E tests: `sentinel/scenarios/test_observability_e2e.py`
 

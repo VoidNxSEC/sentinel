@@ -41,15 +41,17 @@ check_prometheus_alerting_wiring() {
 }
 
 check_thermal_alert_path() {
-  grep -R -n -E 'thermal|temperature' \
+  rg -n 'thermal|temperature' \
     "${ROOT_DIR}/spectre/config/alerts.yml" \
     "${ROOT_DIR}/ai-agent-os" \
-    "${ROOT_DIR}/phantom-soc" >/dev/null
+    "${ROOT_DIR}/phantom-soc" \
+    -g '!**/.git/**' \
+    -g '!**/target/**' >/dev/null
 }
 
 check_prometheus_rules_endpoint() {
-  curl -fsS http://localhost:9090/api/v1/rules >/dev/null
-  curl -fsS http://localhost:9090/api/v1/alerts >/dev/null
+  curl -fsS http://localhost:9090/api/v1/rules >/dev/null &&
+    curl -fsS http://localhost:9090/api/v1/alerts >/dev/null
 }
 
 echo "=== Batch 4 Alerting Checks ==="
