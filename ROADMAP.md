@@ -335,14 +335,14 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 |---------|-------|--------|-------|------------|------------|
 | spectre | Phase 0 done | yes | 11/11 | N/A (is the bus) | infra yes |
 | owasaka | All 6 phases | yes | 35 pass | publishes | reconnect ✅, NKey ✅, TLS ready |
-| phantom | Phase 1 done | yes | 70%+ cov | not yet | API yes, TLS (Caddy proxy) ✅ |
+| phantom | M6 done | yes | 70%+ cov | pub+sub ✅ | API yes, TLS (Caddy proxy) ✅ |
 | phantom-soc/control | A5 done | yes | — | subscribes (EventBus) | dev only |
 | phantom-soc/data | A4 done | yes | — | consumes | dev only |
 | ai-agent-os | Phase 1 done | yes | 2/2 | publishes | reconnect ✅, NKey ✅, TLS ready |
 | neoland | 85/100 | yes | 131 pass | no | SLO suite ✅ |
 | spooknix | Sprint 3 done | yes | — | no | needs TLS |
-| cerebro | Phase 4 done | — | 112 pass | no | needs NATS wire |
-| securellm-bridge | Core done | yes | — | no | needs phantom wire |
+| cerebro | M6 done | — | 112 pass | pub+sub ✅ | NATS wired ✅ |
+| securellm-bridge | M6 done | yes | — | publishes ✅ | real Prometheus metrics ✅ |
 | securellm-mcp | Phase 1 done | yes | — | N/A | prod ready |
 | intelagent | Foundation | yes | core only | no | scaffolding, ADR-0054 decoupled |
 | phantom-soc-kernel | Kernel done | yes | — | no | backend complete, needs UI wire |
@@ -357,16 +357,16 @@ environment. M3 (security) and M4 (observability) are the next hard gates before
 M1 (compose) ✅  ->  M2 (tests) ✅  ->  M3 (security) ✅  ->  M4 (observability) ← YOU ARE HERE
                                                                        |
                                                                        v
-M5 (CI/CD) ✅  ->  M6 (ML pipeline)  ->  M7+M8 (deploy + dist)
+M5 (CI/CD) ✅  ->  M6 (ML pipeline) ✅  ->  M7+M8 (deploy + dist) ← NEXT (post-pause)
 ```
 
-**Immediate blockers:**
-1. ~~NATS reconnect logic in owasaka + ai-agent-os~~ ✅ done (2026-03-29)
-2. ~~NKey credentials + ACLs (M3.1)~~ ✅ done (2026-03-29)
-3. ~~TLS everywhere (M3.2) + SOPS secrets (M3.3)~~ ✅ done (2026-03-29)
-4. Live stack validation — run full test suite against compose with auth+TLS
-5. M3.4 SecureLLM Bridge integration (optional before M4)
-6. M4 Observability — Prometheus scrape, Grafana dashboards, structured logging
+**M1–M6 complete. Strategic pause (ADR-0055) until 2026-05-01.**
+
+**M7 blockers (post-pause):**
+1. Fix docker-compose shared volume phantom↔cerebro (file_path accessibility)
+2. Production hardware provisioning (NixOS bare-metal or VPS)
+3. Live stack validation — run full test suite against compose with NKey+TLS
+4. M7 SLO validation suite against real traffic
 
 ---
 
