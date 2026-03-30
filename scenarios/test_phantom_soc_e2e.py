@@ -17,18 +17,27 @@ import os
 import subprocess
 import time
 import uuid
+from pathlib import Path
 
 import pytest
 
 
-NATS_URL = "nats://localhost:4222"
+NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
 
 ASSET_DISCOVERED_SUBJECT = "network.asset.discovered.v1"
 DNS_QUERY_SUBJECT = "network.dns.query.v1"
 
-CONTROL_PLANE_BIN = os.path.expanduser(
-    "~/master/phantom-soc/control-plane/target/release/phantom-soc-control"
+SENTINEL_DIR = Path(__file__).resolve().parent.parent
+WORKSPACE_ROOT = Path(
+    os.getenv("SENTINEL_WORKSPACE_ROOT", str(SENTINEL_DIR.parent))
+).resolve()
+PHANTOM_SOC_ROOT = Path(
+    os.getenv("SENTINEL_PHANTOM_SOC_ROOT", str(WORKSPACE_ROOT / "phantom-soc"))
 )
+CONTROL_PLANE_BIN = str(
+    PHANTOM_SOC_ROOT / "control-plane" / "target" / "release" / "phantom-soc-control"
+)
+DATA_PLANE_DIR = PHANTOM_SOC_ROOT / "data-plane"
 
 DATA_PLANE_MODULE = "phantom"
 
@@ -228,8 +237,8 @@ def test_phantom_soc_data_plane_consumer_starts():
     Runs briefly (2s) then terminates — checks no immediate crash.
     """
     # Locate the phantom CLI in the data-plane project
-    data_plane_dir = os.path.expanduser("~/master/phantom-soc/data-plane")
-    if not os.path.isdir(data_plane_dir):
+    data_plane_dir = DATA_PLANE_DIR
+    if not data_plane_dir.is_dir():
         pytest.skip(f"phantom-soc data-plane not found at {data_plane_dir}")
 
     # Try to start consumer — give it 2 seconds to connect then kill
@@ -237,7 +246,7 @@ def test_phantom_soc_data_plane_consumer_starts():
         proc = subprocess.Popen(
             ["python", "-m", "phantom", "ops", "listen-nats",
              "--nats-url", NATS_URL],
-            cwd=data_plane_dir,
+            cwd=str(data_plane_dir),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -276,7 +285,7 @@ def test_phantom_soc_scheduler_binary_exists():
     if not _control_plane_available():
         pytest.skip(
             f"control-plane binary not found at {CONTROL_PLANE_BIN}. "
-            "Build with: cd ~/master/phantom-soc/control-plane && cargo build --release"
+            f"Build with: cd {PHANTOM_SOC_ROOT}/control-plane && cargo build --release"
         )
     assert os.access(CONTROL_PLANE_BIN, os.X_OK), (
         f"{CONTROL_PLANE_BIN} exists but is not executable"
@@ -336,8 +345,8 @@ async def test_phantom_soc_live_dispatch(nats_client):
 
     Requires: phantom-soc data-plane installed + NATS on :4222
     """
-    data_plane_dir = os.path.expanduser("~/master/phantom-soc/data-plane")
-    if not os.path.isdir(data_plane_dir):
+    data_plane_dir = DATA_PLANE_DIR
+    if not data_plane_dir.is_dir():
         pytest.skip("phantom-soc data-plane not found")
 
     proc = None
@@ -345,7 +354,7 @@ async def test_phantom_soc_live_dispatch(nats_client):
         proc = subprocess.Popen(
             ["python", "-m", "phantom", "ops", "listen-nats",
              "--nats-url", NATS_URL],
-            cwd=data_plane_dir,
+            cwd=str(data_plane_dir),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

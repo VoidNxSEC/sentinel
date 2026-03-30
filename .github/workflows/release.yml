@@ -7,21 +7,119 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 0.2.0)'
+        description: "Release version (e.g. 0.2.0)"
         required: true
 
 env:
-  REGISTRY: ghcr.io
-  ORG: VoidNxSEC
-  PYTHON_VERSION: '3.13'
+  WORKSPACE_ROOT: ${{ github.workspace }}/workspace
+  PYTHON_VERSION: "3.13"
+  LIVE_PHANTOM_URL: http://localhost:8008
+  LIVE_CEREBRO_URL: http://localhost:8002
+  LIVE_SECURELLM_URL: http://localhost:8081
+  LIVE_OWASAKA_URL: http://localhost:8080
+  LIVE_PROMETHEUS_URL: http://localhost:9090
+  LIVE_GRAFANA_URL: http://localhost:3001
+  LIVE_NATS_URL: nats://localhost:4222
 
 jobs:
-  # ──────────────────────────────────────────────
-  # 1. Full integration gate
-  # ──────────────────────────────────────────────
   integration-gate:
     name: Integration Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Materialize release workspace dependencies
+        env:
+          WORKSPACE_ROOT: ${{ env.WORKSPACE_ROOT }}
+          SENTINEL_REPOS: adr-ledger,cerebro,phantom,spectre,owasaka,securellm-bridge
+        run: bash .github/scripts/materialize-sentinel-workspace.sh
+
+      - name: Sentinel flake check
+        run: nix flake check --no-build
+
+      - name: Sentinel package build
+        run: nix build .#default --print-build-logs
+
+      - name: Normalize observability config permissions
+        run: |
+          chmod 644 \
+            "${{ env.WORKSPACE_ROOT }}/spectre/prometheus.yml" \
+            "${{ env.WORKSPACE_ROOT }}/spectre/config/alerts.yml" \
+            "${{ env.WORKSPACE_ROOT }}/spectre/config/loki-config.yml" \
+            "${{ env.WORKSPACE_ROOT }}/spectre/config/promtail-config.yml" \
+            "${{ env.WORKSPACE_ROOT }}/spectre/config/grafana/provisioning/datasources/prometheus.yml" \
+            "${{ env.WORKSPACE_ROOT }}/spectre/config/grafana/provisioning/datasources/loki.yml"
+
+      - name: Run full test suite
+        env:
+          SENTINEL_USE_LIVE_STACK: "1"
+          SENTINEL_WORKSPACE_ROOT: ${{ env.WORKSPACE_ROOT }}
+          SENTINEL_PHANTOM_TEST_URL: ${{ env.LIVE_PHANTOM_URL }}
+          SENTINEL_PHANTOM_HEALTH_URL: ${{ env.LIVE_PHANTOM_URL }}/health
+          SENTINEL_PUBLIC_PHANTOM_URL: ${{ env.LIVE_PHANTOM_URL }}
+          SENTINEL_CEREBRO_URL: ${{ env.LIVE_CEREBRO_URL }}
+          SENTINEL_SECURELLM_URL: ${{ env.LIVE_SECURELLM_URL }}
+          SENTINEL_OWASAKA_URL: ${{ env.LIVE_OWASAKA_URL }}
+          SENTINEL_PROMETHEUS_URL: ${{ env.LIVE_PROMETHEUS_URL }}
+          SENTINEL_GRAFANA_URL: ${{ env.LIVE_GRAFANA_URL }}
+          SENTINEL_NATS_URL: ${{ env.LIVE_NATS_URL }}
+          SENTINEL_NATS_HEALTH_URL: http://localhost:8222/healthz
+          NATS_URL: ${{ env.LIVE_NATS_URL }}
+        run: |
+          nix develop --command bash -lc '
+            poetry install --no-interaction --no-root -E nats
+            mkdir -p reports
+            docker compose --profile core --profile intelligence --profile observability up -d
+            sleep 45
+            pytest \
+              test_comprehensive_integration.py \
+              scenarios/ chaos/ performance/ \
+              -v --tb=short \
+              --junitxml=reports/junit-release-gate.xml
+          '
+
+      - name: Capture gate logs
+        if: always()
+        run: |
+          docker compose ps --all
+          docker compose logs --tail=200 > /tmp/release-gate.log || true
+
+      - name: Upload gate results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-gate-results
+          path: |
+            reports/
+            /tmp/release-gate.log
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  version:
+    name: Resolve Version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+
+    steps:
+      - id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            branch="${{ github.ref_name }}"
+            echo "version=${branch#release/v}" >> "$GITHUB_OUTPUT"
+          fi
+
+  packaging-deb:
+    name: Package (.deb)
+    runs-on: ubuntu-24.04
+    needs: [integration-gate, version]
 
     steps:
       - uses: actions/checkout@v4
@@ -30,146 +128,31 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - uses: snok/install-poetry@v1
+      - uses: actions/setup-go@v5
         with:
-          version: '1.7.0'
+          go-version: stable
 
-      - name: Install dependencies
-        run: |
-          cd sentinel
-          poetry install --no-interaction -E nats
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Start full stack
-        run: |
-          docker compose --profile core --profile intelligence up -d
-          sleep 45
-
-      - name: Run full test suite
-        run: |
-          cd sentinel
-          poetry run pytest \
-            test_comprehensive_integration.py \
-            scenarios/ chaos/ performance/ \
-            -v --tb=short \
-            --junitxml=reports/junit-release-gate.xml
-
-      - name: Upload gate results
-        uses: actions/upload-artifact@v4
-        if: always()
+      - uses: ruby/setup-ruby@v1
         with:
-          name: release-gate-results
-          path: sentinel/reports/
+          ruby-version: "3.3"
 
-      - name: Teardown
-        if: always()
-        run: docker compose --profile core --profile intelligence down -v
+      - name: Install packaging dependencies
+        run: gem install --no-document fpm
 
-  # ──────────────────────────────────────────────
-  # 2. Extract version
-  # ──────────────────────────────────────────────
-  version:
-    name: Resolve Version
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.ver.outputs.version }}
+      - name: Materialize packaging workspace dependencies
+        env:
+          WORKSPACE_ROOT: ${{ env.WORKSPACE_ROOT }}
+          SENTINEL_REPOS: ai-agent-os,securellm-bridge,phantom-nx,owasaka,phantom,cerebro,spooknix
+        run: bash .github/scripts/materialize-sentinel-workspace.sh
 
-    steps:
-      - id: ver
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            # Extract from branch name: release/v0.2.0 → 0.2.0
-            BRANCH="${{ github.ref_name }}"
-            echo "version=${BRANCH#release/v}" >> $GITHUB_OUTPUT
-          fi
-
-  # ──────────────────────────────────────────────
-  # 3. Build + push Docker images to GHCR
-  # ──────────────────────────────────────────────
-  docker-images:
-    name: Build Docker — ${{ matrix.service }}
-    runs-on: ubuntu-latest
-    needs: [integration-gate, version]
-
-    strategy:
-      matrix:
-        service:
-          - phantom-api
-          - owasaka
-          - cerebro
-          - securellm-bridge
-          - spooknix
-          - ml-ops-api
-          - phantom-nx
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push ${{ matrix.service }}
-        uses: docker/build-push-action@v5
-        with:
-          context: ./${{ matrix.service }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.service }}:v${{ needs.version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.service }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ──────────────────────────────────────────────
-  # 4. Nix flake outputs
-  # ──────────────────────────────────────────────
-  nix-build:
-    name: Nix Build
-    runs-on: ubuntu-latest
-    needs: [integration-gate, version]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: cachix/install-nix-action@v27
-        with:
-          extra_nix_config: |
-            extra-substituters = https://voidnxsec.cachix.org
-            extra-trusted-public-keys = voidnxsec.cachix.org-1:placeholder=
-
-      - uses: cachix/cachix-action@v14
-        with:
-          name: voidnxsec
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-
-      - name: Build sentinel flake
-        run: |
-          cd sentinel
-          nix build .#integration-tests --print-build-logs
-
-      - name: Build NixOS module
-        run: nix build ./packaging/nix#nixosModules.voidnxlabs-stack --print-build-logs || true
-
-  # ──────────────────────────────────────────────
-  # 5. Cross-platform packaging
-  # ──────────────────────────────────────────────
-  packaging-deb:
-    name: Package (.deb)
-    runs-on: ubuntu-latest
-    needs: [docker-images, version]
-
-    steps:
-      - uses: actions/checkout@v4
       - name: Build Debian packages
-        run: |
-          chmod +x packaging/deb/build.sh
-          VERSION=${{ needs.version.outputs.version }} packaging/deb/build.sh
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          WORKSPACE_ROOT: ${{ env.WORKSPACE_ROOT }}
+        run: bash packaging/deb/build.sh
+
       - uses: actions/upload-artifact@v4
         with:
           name: deb-packages
@@ -177,17 +160,44 @@ jobs:
 
   packaging-rpm:
     name: Package (.rpm)
-    runs-on: ubuntu-latest
-    needs: [docker-images, version]
+    runs-on: ubuntu-24.04
+    needs: [integration-gate, version]
 
     steps:
       - uses: actions/checkout@v4
-      - name: Install rpm tools
-        run: sudo apt-get install -y rpm
-      - name: Build RPM packages
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Install packaging dependencies
         run: |
-          chmod +x packaging/rpm/build.sh
-          VERSION=${{ needs.version.outputs.version }} packaging/rpm/build.sh
+          gem install --no-document fpm
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      - name: Materialize packaging workspace dependencies
+        env:
+          WORKSPACE_ROOT: ${{ env.WORKSPACE_ROOT }}
+          SENTINEL_REPOS: ai-agent-os,securellm-bridge,phantom-nx,owasaka,phantom,cerebro,spooknix
+        run: bash .github/scripts/materialize-sentinel-workspace.sh
+
+      - name: Build RPM packages
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          WORKSPACE_ROOT: ${{ env.WORKSPACE_ROOT }}
+        run: bash packaging/rpm/build.sh
+
       - uses: actions/upload-artifact@v4
         with:
           name: rpm-packages
@@ -195,15 +205,26 @@ jobs:
 
   packaging-macos:
     name: Package (macOS)
-    runs-on: macos-latest
-    needs: [docker-images, version]
+    runs-on: macos-15
+    needs: [integration-gate, version]
 
     steps:
       - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Materialize packaging workspace dependencies
+        env:
+          WORKSPACE_ROOT: ${{ env.WORKSPACE_ROOT }}
+          SENTINEL_REPOS: ai-agent-os,securellm-bridge,phantom-nx
+        run: bash .github/scripts/materialize-sentinel-workspace.sh
+
       - name: Build macOS artifacts
-        run: |
-          chmod +x packaging/macos/build.sh
-          VERSION=${{ needs.version.outputs.version }} packaging/macos/build.sh
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          WORKSPACE_ROOT: ${{ env.WORKSPACE_ROOT }}
+        run: bash packaging/macos/build.sh
+
       - uses: actions/upload-artifact@v4
         with:
           name: macos-packages
@@ -211,33 +232,46 @@ jobs:
 
   packaging-windows:
     name: Package (Windows)
-    runs-on: windows-latest
-    needs: [docker-images, version]
+    runs-on: windows-2025
+    needs: [integration-gate, version]
 
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Materialize packaging workspace dependencies
+        shell: bash
+        env:
+          WORKSPACE_ROOT: ${{ env.WORKSPACE_ROOT }}
+          SENTINEL_REPOS: ai-agent-os,securellm-bridge,phantom-nx
+        run: bash .github/scripts/materialize-sentinel-workspace.sh
+
       - name: Build Windows packages
         shell: pwsh
         run: |
           $env:VERSION = "${{ needs.version.outputs.version }}"
+          $env:WORKSPACE_ROOT = (Resolve-Path "${{ env.WORKSPACE_ROOT }}").Path
           .\packaging\windows\build.ps1
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows-packages
           path: dist/windows/
 
-  # ──────────────────────────────────────────────
-  # 6. GitHub Release
-  # ──────────────────────────────────────────────
   github-release:
     name: GitHub Release v${{ needs.version.outputs.version }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
       - version
-      - docker-images
-      - nix-build
       - packaging-deb
       - packaging-rpm
+      - packaging-macos
+      - packaging-windows
 
     permissions:
       contents: write
@@ -255,11 +289,11 @@ jobs:
       - name: Extract CHANGELOG entry
         id: changelog
         run: |
-          VERSION=${{ needs.version.outputs.version }}
-          NOTES=$(awk "/## \[$VERSION\]/,/## \[/" CHANGELOG.md | head -n -1)
-          echo "notes<<EOF" >> $GITHUB_OUTPUT
-          echo "$NOTES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          version="${{ needs.version.outputs.version }}"
+          notes=$(awk "/## \[$version\]/,/## \[/" CHANGELOG.md | head -n -1)
+          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$notes" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

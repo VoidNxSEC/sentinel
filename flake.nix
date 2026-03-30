@@ -7,33 +7,33 @@
 
     # Component Flakes (GitHub URIs)
     neoland = {
-      url = "git+ssh://git@github.com/marcosfpina/neoland";
+      url = "git+https://github.com/marcosfpina/neoland";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     phantom = {
-      url = "git+ssh://git@github.com/marcosfpina/phantom";
+      url = "git+https://github.com/marcosfpina/phantom";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     neutron = {
-      url = "git+ssh://git@github.com/marcosfpina/neutron";
+      url = "git+https://github.com/marcosfpina/neutron";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     cerebro = {
-      url = "git+ssh://git@github.com/marcosfpina/cerebro";
+      url = "git+https://github.com/marcosfpina/cerebro";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     spectre = {
-      url = "git+ssh://git@github.com/marcosfpina/spectre";
+      url = "git+https://github.com/marcosfpina/spectre";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     # ADR Ledger (knowledge base)
     adr-ledger = {
-      url = "git+ssh://git@github.com/marcosfpina/adr-ledger";
+      url = "git+https://github.com/marcosfpina/adr-ledger";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -175,11 +175,7 @@
 
             src = ./.;
 
-            nativeBuildInputs = [
-              pythonEnv
-              pkgs.docker
-              pkgs.docker-compose
-            ];
+            dontBuild = true;
 
             installPhase = ''
               mkdir -p $out/bin
@@ -192,7 +188,7 @@
 
             meta = with pkgs.lib; {
               description = "Comprehensive Integration Test Suite for Distributed AI Systems";
-              license = licenses.proprietary;
+              license = licenses.unfree;
               maintainers = [ "VoidNxSEC Team" ];
               platforms = platforms.unix;
             };
@@ -352,18 +348,22 @@
 
         # Checks (run with `nix flake check`)
         checks = {
-          # Basic flake structure check
-          flake-check = pkgs.runCommand "flake-check" { } ''
-            echo "Checking flake structure..."
-            ${pkgs.nix}/bin/nix flake check ${self}
+          build-package = self.packages.${system}.default;
+
+          formatting = pkgs.runCommand "fmt-check" {
+            nativeBuildInputs = [ pkgs.findutils pkgs.nixfmt-rfc-style ];
+          } ''
+            cd ${self}
+            find . -name '*.nix' -print0 | xargs -0 nixfmt --check
             touch $out
           '';
 
           # Python syntax check
-          python-syntax = pkgs.runCommand "python-syntax-check" { } ''
-            ${pythonEnv}/bin/python -m py_compile ${self}/test_comprehensive_integration.py
-            ${pythonEnv}/bin/python -m py_compile ${self}/conftest.py
-            ${pythonEnv}/bin/python -m py_compile ${self}/mocks/mock_ai_agent.py
+          python-syntax = pkgs.runCommand "python-syntax-check" {
+            nativeBuildInputs = [ pkgs.findutils pythonEnv ];
+          } ''
+            cd ${self}
+            find . -type f -name '*.py' -print0 | xargs -0 -n1 ${pythonEnv}/bin/python -m py_compile
             touch $out
           '';
 

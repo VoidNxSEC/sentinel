@@ -14,11 +14,11 @@
         "rev": "30fa2d655b357e92e9570c106686c32b34e5f5b6",
         "revCount": 5,
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/adr-ledger"
+        "url": "https://github.com/marcosfpina/adr-ledger"
       },
       "original": {
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/adr-ledger"
+        "url": "https://github.com/marcosfpina/adr-ledger"
       }
     },
     "advisory-db": {
@@ -52,11 +52,11 @@
         "rev": "5a6786ba4bc29afc8bb405227fa509371826313c",
         "revCount": 63,
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/cerebro"
+        "url": "https://github.com/marcosfpina/cerebro"
       },
       "original": {
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/cerebro"
+        "url": "https://github.com/marcosfpina/cerebro"
       }
     },
     "crane": {
@@ -215,11 +215,11 @@
         "rev": "18447722e94de4bac4c646e77117a852806b3995",
         "revCount": 24,
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/neoland"
+        "url": "https://github.com/marcosfpina/neoland"
       },
       "original": {
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/neoland"
+        "url": "https://github.com/marcosfpina/neoland"
       }
     },
     "neutron": {
@@ -236,11 +236,11 @@
         "rev": "17a9d358b5ea7e626e151d1a6b1a7af9ebd68d92",
         "revCount": 54,
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/neutron"
+        "url": "https://github.com/marcosfpina/neutron"
       },
       "original": {
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/neutron"
+        "url": "https://github.com/marcosfpina/neutron"
       }
     },
     "nixpkgs": {
@@ -308,11 +308,11 @@
         "rev": "df8dd375a27c33b3fd58cdc0570418487e862a99",
         "revCount": 56,
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/phantom"
+        "url": "https://github.com/marcosfpina/phantom"
       },
       "original": {
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/phantom"
+        "url": "https://github.com/marcosfpina/phantom"
       }
     },
     "root": {
@@ -420,11 +420,11 @@
         "rev": "6312581a599245062dcb0dee33091c67fbc3e0e6",
         "revCount": 14,
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/spectre"
+        "url": "https://github.com/marcosfpina/spectre"
       },
       "original": {
         "type": "git",
-        "url": "ssh://git@github.com/marcosfpina/spectre"
+        "url": "https://github.com/marcosfpina/spectre"
       }
     },
     "systems": {

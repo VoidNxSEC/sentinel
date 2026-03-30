@@ -1,6 +1,13 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   nats:
     image: nats:2.10-alpine
+    profiles: ["core", "intelligence", "observability", "gpu", "full"]
     ports:
       - "4222:4222"
       - "8222:8222"
@@ -13,26 +20,40 @@ services:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
+    logging: *default-logging
+    restart: unless-stopped
 
   phantom-api:
     build:
-      context: ./phantom
+      context: ${SENTINEL_WORKSPACE_ROOT:-..}/phantom
       dockerfile: Dockerfile
+    profiles: ["core", "intelligence", "observability", "gpu", "full"]
     ports:
       - "8008:8000"
     environment:
       NATS_URL: nats://nats:4222
+      SECURELLM_BRIDGE_URL: http://securellm-bridge:8080
     depends_on:
       nats:
         condition: service_healthy
     networks:
       - spectre-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
 
   owasaka:
     build:
-      context: ./owasaka
+      context: ${SENTINEL_WORKSPACE_ROOT:-..}/owasaka
       dockerfile: Dockerfile
+    profiles: ["core", "intelligence", "observability", "gpu", "full"]
+    ports:
+      - "8080:8080"
     environment:
       NATS_URL: nats://nats:4222
     depends_on:
@@ -42,11 +63,63 @@ services:
       - spectre-net
     cap_add:
       - NET_RAW
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+
+  cerebro:
+    build:
+      context: ${SENTINEL_WORKSPACE_ROOT:-..}/cerebro
+      dockerfile: Dockerfile
+    profiles: ["intelligence", "observability", "full"]
+    ports:
+      - "8002:8000"
+    environment:
+      NATS_URL: nats://nats:4222
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - spectre-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+
+  securellm-bridge:
+    build:
+      context: ${SENTINEL_WORKSPACE_ROOT:-..}/securellm-bridge
+      dockerfile: Dockerfile
+    profiles: ["intelligence", "observability", "full"]
+    ports:
+      - "8081:8080"
+    environment:
+      NATS_URL: nats://nats:4222
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - spectre-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
 
   spooknix:
     build:
-      context: ./spooknix
+      context: ${SENTINEL_WORKSPACE_ROOT:-..}/spooknix
       dockerfile: Dockerfile
+    profiles: ["gpu", "full"]
     ports:
       - "8000:8000"
     deploy:
@@ -54,8 +127,110 @@ services:
         reservations:
           devices:
             - capabilities: [gpu]
-    profiles:
-      - gpu
+    networks:
+      - spectre-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    logging: *default-logging
+    restart: unless-stopped
+
+  nats-exporter:
+    image: natsio/prometheus-nats-exporter:0.14.0
+    profiles: ["observability", "full"]
+    command: ["-varz", "-connz", "-subz", "http://nats:8222"]
+    expose:
+      - "7777"
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - spectre-net
+    logging: *default-logging
+    restart: unless-stopped
+
+  ai-agent-metrics-bridge:
+    build:
+      context: ${SENTINEL_WORKSPACE_ROOT:-..}/spectre/tools/ai-agent-metrics-bridge
+      dockerfile: Dockerfile
+    profiles: ["observability", "full"]
+    expose:
+      - "9101"
+    environment:
+      NATS_URL: nats://nats:4222
+      BRIDGE_PORT: "9101"
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - spectre-net
+    logging: *default-logging
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    profiles: ["observability", "full"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ${SENTINEL_WORKSPACE_ROOT:-..}/spectre/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${SENTINEL_WORKSPACE_ROOT:-..}/spectre/config/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - nats-exporter
+      - ai-agent-metrics-bridge
+    networks:
+      - spectre-net
+    logging: *default-logging
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.3.3
+    profiles: ["observability", "full"]
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ${SENTINEL_WORKSPACE_ROOT:-..}/spectre/config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ${SENTINEL_WORKSPACE_ROOT:-..}/spectre/config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - spectre-net
+    logging: *default-logging
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.0.0
+    profiles: ["observability", "full"]
+    command: ["-config.file=/etc/loki/config.yml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ${SENTINEL_WORKSPACE_ROOT:-..}/spectre/config/loki-config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    networks:
+      - spectre-net
+    logging: *default-logging
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    profiles: ["observability", "full"]
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ${SENTINEL_WORKSPACE_ROOT:-..}/spectre/config/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - spectre-net
+    logging: *default-logging
+    restart: unless-stopped
 
 networks:
   spectre-net:
@@ -63,3 +238,6 @@ networks:
 
 volumes:
   nats-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:

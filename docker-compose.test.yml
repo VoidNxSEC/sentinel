@@ -10,7 +10,7 @@ services:
   # ========================================
   phantom:
     build:
-      context: ../phantom
+      context: ${SENTINEL_WORKSPACE_ROOT:-..}/phantom
       dockerfile_inline: |
         FROM python:3.11-slim
         WORKDIR /app
@@ -51,9 +51,9 @@ services:
       - AUDIT_LOG_DIR=/tmp/phantom-bundles
     volumes:
       # Mount knowledge base (ADRs)
-      - ../adr-ledger/knowledge:/app/knowledge:ro
+      - ${SENTINEL_WORKSPACE_ROOT:-..}/adr-ledger/knowledge:/app/knowledge:ro
       # Mount source code for hot reload during development
-      - ../phantom/src:/app/src:ro
+      - ${SENTINEL_WORKSPACE_ROOT:-..}/phantom/src:/app/src:ro
       # Mount audit logs for verification
       - phantom-audit-logs:/tmp/phantom-bundles
     networks:
@@ -68,7 +68,7 @@ services:
   # ========================================
   cerebro:
     build:
-      context: ../cerebro
+      context: ${SENTINEL_WORKSPACE_ROOT:-..}/cerebro
       dockerfile: Dockerfile
     container_name: test-cerebro
     ports:
@@ -80,8 +80,8 @@ services:
       - KNOWLEDGE_BASE_PATH=/app/knowledge/knowledge_base.json
       - LOG_LEVEL=DEBUG
     volumes:
-      - ../adr-ledger/knowledge:/app/knowledge:ro
-      - ../cerebro/src:/app/src:ro
+      - ${SENTINEL_WORKSPACE_ROOT:-..}/adr-ledger/knowledge:/app/knowledge:ro
+      - ${SENTINEL_WORKSPACE_ROOT:-..}/cerebro/src:/app/src:ro
     networks:
       - test-network
     healthcheck:

@@ -15,6 +15,7 @@ import asyncio
 import os
 import subprocess
 import inspect
+import ssl
 from pathlib import Path
 from typing import Dict, Any, Callable
 
@@ -33,13 +34,22 @@ SERVICE_STARTUP_WAIT = 20  # seconds
 SERVICE_HEALTH_CHECK_RETRIES = 30
 SERVICE_HEALTH_CHECK_INTERVAL = 2  # seconds
 
-BASE_DIR = Path(__file__).parent
-ROOT_DIR = BASE_DIR.parent
+BASE_DIR = Path(__file__).parent.resolve()
+WORKSPACE_ROOT = Path(
+    os.getenv("SENTINEL_WORKSPACE_ROOT", str(BASE_DIR.parent))
+).resolve()
+ROOT_DIR = WORKSPACE_ROOT
 FIXTURES_DIR = BASE_DIR / "fixtures" / "bundles"
-DOCKER_COMPOSE_FILE = BASE_DIR / "docker-compose.test.yml"
+DOCKER_COMPOSE_FILE = Path(
+    os.getenv("SENTINEL_COMPOSE_FILE", str(BASE_DIR / "docker-compose.test.yml"))
+)
 DEFAULT_CA_CERT_FILE = ROOT_DIR / "secrets" / "tls" / "ca.crt"
-DEFAULT_ENV_FILE = ROOT_DIR / ".env"
-NKEYS_DIR = ROOT_DIR / "spectre" / "config" / "nkeys"
+DEFAULT_ENV_FILE = Path(os.getenv("SENTINEL_ENV_FILE", str(ROOT_DIR / ".env")))
+NKEYS_DIR = Path(
+    os.getenv("SENTINEL_NKEYS_DIR", str(ROOT_DIR / "spectre" / "config" / "nkeys"))
+)
+DEFAULT_NATS_CLIENT_CERT_FILE = ROOT_DIR / "secrets" / "tls" / "phantom-api.crt"
+DEFAULT_NATS_CLIENT_KEY_FILE = ROOT_DIR / "secrets" / "tls" / "phantom-api.key"
 
 
 def _env_true(name: str, default: bool = False) -> bool:
@@ -128,6 +138,26 @@ def _require_nkey_seed(name: str) -> str:
 
 def _nats_auth_enabled() -> bool:
     return _load_nkey_seed("OWASAKA_NKEY_SEED") is not None
+
+
+def _build_nats_tls_context() -> ssl.SSLContext:
+    ca_file = _get_config_value("NATS_CA_FILE")
+    cert_file = _get_config_value("NATS_CLIENT_CERT_FILE")
+    key_file = _get_config_value("NATS_CLIENT_KEY_FILE")
+
+    if not ca_file and DEFAULT_CA_CERT_FILE.exists():
+        ca_file = str(DEFAULT_CA_CERT_FILE)
+    if not cert_file and DEFAULT_NATS_CLIENT_CERT_FILE.exists():
+        cert_file = str(DEFAULT_NATS_CLIENT_CERT_FILE)
+    if not key_file and DEFAULT_NATS_CLIENT_KEY_FILE.exists():
+        key_file = str(DEFAULT_NATS_CLIENT_KEY_FILE)
+
+    tls_context = ssl.create_default_context(cafile=ca_file or None)
+    if hasattr(ssl, "VERIFY_X509_STRICT"):
+        tls_context.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    if cert_file and key_file:
+        tls_context.load_cert_chain(certfile=cert_file, keyfile=key_file)
+    return tls_context
 
 
 # ========================================
@@ -232,9 +262,14 @@ def _wait_for_service(name: str, url: str, required: bool = True):
 @pytest.fixture
 async def phantom_client(docker_services):
     """HTTP client for Phantom Judge API."""
+    base_url = _get_config_value(
+        "SENTINEL_PHANTOM_TEST_URL",
+        "https://localhost:8008" if _is_live_stack_mode() else "http://localhost:8000",
+    )
     async with httpx.AsyncClient(
-        base_url="http://localhost:8000",
-        timeout=TIMEOUT_DEFAULT
+        base_url=base_url,
+        timeout=TIMEOUT_DEFAULT,
+        verify=_http_verify_arg(base_url),
     ) as client:
         yield client
 
@@ -242,9 +277,11 @@ async def phantom_client(docker_services):
 @pytest.fixture
 async def cerebro_client(docker_services):
     """HTTP client for Cerebro RAG API."""
+    base_url = _get_config_value("SENTINEL_CEREBRO_URL", "http://localhost:8002")
     async with httpx.AsyncClient(
-        base_url="http://localhost:8002",
-        timeout=TIMEOUT_DEFAULT
+        base_url=base_url,
+        timeout=TIMEOUT_DEFAULT,
+        verify=_http_verify_arg(base_url),
     ) as client:
         yield client
 
@@ -414,9 +451,11 @@ def pytest_collection_modifyitems(config, items):
 @pytest.fixture
 async def phantom_api_client(docker_services):
     """HTTP client for Phantom API on production port 8008."""
+    base_url = _get_config_value("SENTINEL_PUBLIC_PHANTOM_URL", "http://localhost:8008")
     async with httpx.AsyncClient(
-        base_url="http://localhost:8008",
-        timeout=TIMEOUT_DEFAULT
+        base_url=base_url,
+        timeout=TIMEOUT_DEFAULT,
+        verify=_http_verify_arg(base_url),
     ) as client:
         yield client
 
@@ -424,9 +463,11 @@ async def phantom_api_client(docker_services):
 @pytest.fixture
 async def owasaka_client(docker_services):
     """HTTP client for Owasaka SIEM API."""
+    base_url = _get_config_value("SENTINEL_OWASAKA_URL", "http://localhost:8080")
     async with httpx.AsyncClient(
-        base_url="http://localhost:8080",
-        timeout=TIMEOUT_DEFAULT
+        base_url=base_url,
+        timeout=TIMEOUT_DEFAULT,
+        verify=_http_verify_arg(base_url),
     ) as client:
         yield client
 
@@ -434,9 +475,11 @@ async def owasaka_client(docker_services):
 @pytest.fixture
 async def securellm_client(docker_services):
     """HTTP client for SecureLLM Bridge (host port 8081)."""
+    base_url = _get_config_value("SENTINEL_SECURELLM_URL", "http://localhost:8081")
     async with httpx.AsyncClient(
-        base_url="http://localhost:8081",
-        timeout=TIMEOUT_DEFAULT
+        base_url=base_url,
+        timeout=TIMEOUT_DEFAULT,
+        verify=_http_verify_arg(base_url),
     ) as client:
         yield client
 
@@ -477,6 +520,13 @@ async def nats_client(docker_services):
             }
             if _nats_auth_enabled():
                 connect_kwargs["nkeys_seed_str"] = _require_nkey_seed(seed_env)
+            if (
+                self.url.startswith("tls://")
+                or _get_config_value("NATS_CA_FILE")
+                or _get_config_value("NATS_CLIENT_CERT_FILE")
+                or _get_config_value("NATS_CLIENT_KEY_FILE")
+            ):
+                connect_kwargs["tls"] = _build_nats_tls_context()
 
             client = await nats_lib.connect(**connect_kwargs)
             self._clients[role] = client
