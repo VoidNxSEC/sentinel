@@ -1,0 +1,95 @@
+title: Neoland Agent Pipeline Process Anomalies
+id: f7a1c0d8-4e3b-4a5f-b8e2-1c9d6a0f3e7b
+status: stable
+level: medium
+description: |
+  Detects anomalous process spawning from the neoland agent pipeline.
+  The DSPy pipeline (port 8001) and control-plane should only spawn
+  expected subprocesses. Unknown child processes may indicate compromise
+  or prompt injection leading to code execution.
+author: VoidNxLabs SOC
+date: 2026/04/07
+tags:
+  - attack.execution
+  - attack.t1059
+  - neoland.pipeline
+logsource:
+  category: process_creation
+  product: linux
+detection:
+  selection_parent:
+    ParentImage|endswith:
+      - '/neoland'
+      - '/python3.13'
+      - '/uvicorn'
+    ParentCommandLine|contains:
+      - 'neoland_agents'
+      - 'neoland-server'
+      - 'dspy-pipeline'
+  filter_expected:
+    Image|endswith:
+      - '/python3.13'
+      - '/neoland'
+      - '/curl'       # health checks
+      - '/psql'       # DB migrations
+  condition: selection_parent and not filter_expected
+falsepositives:
+  - Custom post-processing scripts invoked by pipeline plugins
+  - Debug tools launched manually during development
+---
+title: Neoland NATS Connection Spike
+id: a3b2c1d0-5e6f-4789-8901-2a3b4c5d6e7f
+status: experimental
+level: low
+description: |
+  Detects a burst of NATS connections from the neoland service in a
+  short window. May indicate reconnect storm or unauthorized service
+  impersonating neoland's NKey identity.
+author: VoidNxLabs SOC
+date: 2026/04/07
+tags:
+  - attack.command_and_control
+  - attack.t1571
+  - neoland.nats
+logsource:
+  category: network_connection
+  product: linux
+detection:
+  selection:
+    DestinationPort: 4222
+    Image|endswith: '/neoland'
+  timeframe: 1m
+  condition: selection | count() > 20
+falsepositives:
+  - Service restart during rolling deploy
+  - NATS server restart causing mass reconnect
+---
+title: Neoland Checkpoint Write Outside Expected Path
+id: d4e5f6a7-8b9c-0d1e-2f3a-4b5c6d7e8f90
+status: stable
+level: high
+description: |
+  Detects neoland writing ADR checkpoint files outside the configured
+  checkpoint directory (/var/lib/neoland/checkpoints/adr/). This may
+  indicate path traversal via crafted pipeline output or misconfiguration.
+author: VoidNxLabs SOC
+date: 2026/04/07
+tags:
+  - attack.defense_evasion
+  - attack.t1036
+  - neoland.checkpoint
+logsource:
+  category: file_event
+  product: linux
+detection:
+  selection:
+    Image|endswith: '/neoland'
+    TargetFilename|contains: '.json'
+    EventType: 'creation'
+  filter_expected_path:
+    TargetFilename|startswith:
+      - '/var/lib/neoland/checkpoints/adr/'
+      - '/tmp/neoland-test-'    # integration tests
+  condition: selection and not filter_expected_path
+falsepositives:
+  - Developer running neoland from a non-standard directory
