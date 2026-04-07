@@ -73,7 +73,7 @@ async def test_prometheus_scrape_targets_configured(prom_client):
     data = resp.json()
     jobs = {t["labels"].get("job") for t in data["data"]["activeTargets"]}
 
-    expected_jobs = {"phantom-api", "owasaka", "securellm-bridge", "prometheus"}
+    expected_jobs = {"phantom-api", "owasaka", "securellm-bridge", "prometheus", "neoland"}
     missing = expected_jobs - jobs
     assert not missing, f"Missing scrape jobs: {missing}\nConfigured: {jobs}"
 
@@ -95,6 +95,7 @@ async def test_prometheus_alert_rules_loaded(prom_client):
         "phantom_slo",
         "securellm_bridge",
         "owasaka_health",
+        "neoland_slo",
     }
     missing = expected_groups - group_names
     assert not missing, f"Missing alert groups: {missing}\nLoaded: {group_names}"
