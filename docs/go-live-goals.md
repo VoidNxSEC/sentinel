@@ -172,6 +172,7 @@ Run the gates in this order:
 - Batch 4 Metrics: `sentinel/docs/runbooks/batch-4-metrics.md`
 - Batch 4 Logging: `sentinel/docs/runbooks/batch-4-logging.md`
 - Batch 4 Alerting: `sentinel/docs/runbooks/batch-4-alerting.md`
+- NATS Key Reload: `sentinel/docs/runbooks/nats-key-reload.md`
 
 ---
 
@@ -188,6 +189,7 @@ Declare `NO-GO` when any gate fails, is skipped, or depends on undocumented manu
 
 The following projects should be reviewed before production rollout:
 - `sentinel`
+- `adr-ledger` as the architecture and release-decision source
 - `phantom`
 - `owasaka`
 - `ai-agent-os`
@@ -203,6 +205,7 @@ Each project should cover:
 - observability endpoints and log behavior
 - troubleshooting guidance
 - rollback or recovery references
+- release ADRs / decision records when the project is part of governance rather than runtime
 
 ---
 

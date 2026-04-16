@@ -11,7 +11,8 @@ Convert the already executed operational gates into a final, reproducible deploy
 Batch 6 is `GO` only when:
 - all required gates are recorded as `PASS`;
 - the live stack still answers the critical NATS and Phantom TLS health checks;
-- no open blocker remains outside the explicitly deferred M7 thermal UI path.
+- no open blocker remains outside the explicitly deferred M7 thermal UI path;
+- post-release distribution work in `M8` remains outside the production go-live gate.
 
 ## Run
 
@@ -59,3 +60,6 @@ Local decision passed on 2026-03-30.
 
 Batch 6 does not replace engineering judgment. If a new blocker appears after this check, rerun
 the relevant gate and then rerun Batch 6 before deployment.
+
+Documentation sign-off should still review `adr-ledger` as the release-governance source even
+though the helper script only validates roadmap gate state plus live core health.

@@ -24,6 +24,9 @@ Run from repository root (`/home/kernelcore/master`).
 Required files:
 - `.env`
 - `spectre/config/nats-server.conf`
+- `spectre/config/nkeys/owasaka.nk`
+- `spectre/config/nkeys/ai-agent-os.nk`
+- `spectre/config/nkeys/phantom.nk`
 - `secrets/tls/ca.crt`
 - `secrets/tls/nats.crt`
 - `secrets/tls/nats.key`
@@ -57,6 +60,9 @@ Expected result:
 cd /home/kernelcore/master
 test -f .env
 test -f spectre/config/nats-server.conf
+test -f spectre/config/nkeys/owasaka.nk
+test -f spectre/config/nkeys/ai-agent-os.nk
+test -f spectre/config/nkeys/phantom.nk
 test -f secrets/tls/ca.crt
 test -f secrets/tls/nats.crt
 test -f secrets/tls/nats.key
@@ -80,6 +86,12 @@ Use one of the two options below.
 Option A (preferred helper):
 ```bash
 nix run .#dev-stack
+```
+
+If the stack is already up and the issue is specifically NATS key reload, use:
+
+```bash
+nix run .#nats-reload-keys
 ```
 
 Option B (direct compose):
@@ -186,6 +198,7 @@ docker compose --profile core logs --tail=100 ai-agent-os
 
 Common causes:
 - missing `.env` values
+- stale or mismatched `spectre/config/nkeys/*.nk` files
 - missing or invalid TLS files under `secrets/tls/`
 - NATS auth or cert mismatch between service env and server config
 

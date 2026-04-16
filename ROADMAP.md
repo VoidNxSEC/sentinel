@@ -461,9 +461,12 @@ execution and release gating.
 
 ---
 
-## Milestone 8 — Distribution (NEW)
+## Milestone 8 — Distribution (POST-RELEASE)
 
 **Goal**: Installable on NixOS, Linux, macOS, Windows. Zero manual setup.
+
+**Status**: intentionally deferred until after the production release. Before deploy, the
+priority is per-project release checkups and final hardening across the participating software.
 
 ### 8.1 — NixOS / nixpkgs upstream
 - [x] `packaging/nix/nixos-module.nix` — systemd services + SOPS secrets
@@ -512,7 +515,7 @@ execution and release gating.
 | securellm-mcp | Phase 1 done | yes | — | N/A | prod ready |
 | intelagent | Foundation | yes | core only | no | scaffolding, ADR-0054 decoupled |
 | phantom-soc-kernel | Kernel done | yes | — | no | backend complete, needs UI wire |
-| adr-ledger | Alpha | — | — | N/A | docs only |
+| adr-ledger | Alpha | — | — | N/A | release governance + docs gate |
 | **sentinel** | **Orchestrator** | **yes** | **suite complete** | **N/A** | **CI/CD + dist ready** |
 
 ---
@@ -520,17 +523,17 @@ execution and release gating.
 ## Priority Order
 
 ```
-M1 (compose) ✅  ->  M2 (tests) ✅  ->  M3 (security) ✅  ->  M4 (observability) ← YOU ARE HERE
-                                                                       |
-                                                                       v
-M5 (CI/CD) ✅  ->  M6 (ML pipeline) ✅  ->  M7+M8 (deploy + dist) ← NEXT (post-pause)
+M1 (compose) ✅  ->  M2 (tests) ✅  ->  M3 (security) ✅  ->  M4 (observability) ✅
+M5 (CI/CD) ✅   ->  M6 (ML pipeline) ✅  ->  M7 (deploy + release checkups) ← NEXT
+M8 (distribution) ← POST-RELEASE
 ```
 
 **Milestones M1 through M4 are operationally closed.**
 
-**Immediate blockers:**
-1. Track the deferred `ai-agent-os -> phantom-soc UI` thermal path in M7
-2. Keep rerunnable evidence current if core configuration changes before deploy
+**Immediate pre-release focus:**
+1. Complete per-project release checkups before deploy
+2. Track the deferred `ai-agent-os -> phantom-soc UI` thermal path in M7
+3. Keep rerunnable evidence current if core configuration changes before deploy
 
 ---
 

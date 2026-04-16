@@ -1,5 +1,5 @@
 {
-  description = "Comprehensive Integration Test Suite - Neutron + Cerebro + Spectre + Phantom";
+  description = "Comprehensive Integration Test Suite - Neutron + Cerebro + Spectre + Phantom + adr-ledger";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

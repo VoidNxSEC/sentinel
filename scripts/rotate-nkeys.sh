@@ -19,7 +19,7 @@
 #
 # After running:
 #   - Restart NATS: nats-server --config spectre/config/nats-server.conf --signal reload
-#   - Restart services to pick up new NATS_NKEY_SEED values
+#   - Recreate NATS-facing services so they reload the current *.nk files
 #   - Commit: spectre/config/nats-server.conf + secrets/nkeys.env.enc
 
 set -euo pipefail
@@ -117,6 +117,6 @@ echo "  Removed:   $NKEYS_ENV (plaintext)"
 echo ""
 echo "Rotation complete. Next steps:"
 echo "  1. Reload NATS:   nats-server --signal reload  (or restart container)"
-echo "  2. Restart services to pick up new NATS_NKEY_SEED values"
+echo "  2. Recreate:      nix run .#nats-reload-keys"
 echo "  3. Commit:        spectre/config/nats-server.conf + secrets/nkeys.env.enc"
 echo "  4. Schedule next rotation in 90 days"
