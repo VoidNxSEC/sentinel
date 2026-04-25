@@ -1,0 +1,22 @@
+# voidnxlabs — SOPS configuration
+# Encrypts secrets with age (no cloud KMS dependency)
+#
+# Usage:
+#   sops -e secrets/nkeys.env > secrets/nkeys.env.enc   # encrypt
+#   sops -d secrets/nkeys.env.enc                        # decrypt
+#   sops secrets/nkeys.env.enc                           # edit in-place
+#
+# Key location: ~/.config/sops/age/keys.txt
+# Public key:   age1h0m5uwsjq9twc0rvpm3nv2uqtwarxpq6mq5uqxsxwu6tgzgwcagqw3d0xn
+
+creation_rules:
+  # NKey seeds and TLS private keys
+  - path_regex: secrets/.*\.env(\.enc)?$
+    age: age1h0m5uwsjq9twc0rvpm3nv2uqtwarxpq6mq5uqxsxwu6tgzgwcagqw3d0xn
+
+  - path_regex: secrets/tls/.*\.key(\.enc)?$
+    age: age1h0m5uwsjq9twc0rvpm3nv2uqtwarxpq6mq5uqxsxwu6tgzgwcagqw3d0xn
+
+  # Per-project encrypted configs
+  - path_regex: \.env\.enc$
+    age: age1h0m5uwsjq9twc0rvpm3nv2uqtwarxpq6mq5uqxsxwu6tgzgwcagqw3d0xn

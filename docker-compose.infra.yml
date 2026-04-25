@@ -1,0 +1,509 @@
+---
+# voidnxlabs — Unified Infrastructure Compose
+# GitHub: github.com/VoidNxSEC
+#
+# Profiles:
+#   core          — nats, phantom-api, owasaka, ai-agent-os  (default)
+#   intelligence  — + cerebro, securellm-bridge
+#   gpu           — + spooknix (requires CUDA)
+#   observability — + prometheus, grafana, jaeger
+#   compliance    — + neotron (temporal + postgres)
+#   full          — all of the above
+#
+# Usage:
+#   docker compose --profile core up -d
+#   docker compose --profile core --profile intelligence up -d
+#   docker compose --profile full up -d
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ──────────────────────────────────────────────
+  # CORE — always required
+  # ──────────────────────────────────────────────
+
+  nats:
+    image: nats:2.10-alpine
+    profiles: ["core", "intelligence", "gpu", "observability", "compliance", "full"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+      - "6222:6222"
+    # M3.1: load NKey auth config when present; fall back to no-auth for local dev
+    command: >
+      sh -c '
+        if [ -f /etc/nats/nats-server.conf ]; then
+          exec nats-server --config /etc/nats/nats-server.conf
+        else
+          exec nats-server -js -m 8222 --cluster_name spectre
+        fi'
+    volumes:
+      - ./spectre/config/nats-server.conf:/etc/nats/nats-server.conf:ro
+      # M3.2: TLS certs (CA + server cert/key)
+      - ./secrets/tls/ca.crt:/etc/nats/tls/ca.crt:ro
+      - ./secrets/tls/nats.crt:/etc/nats/tls/nats.crt:ro
+      - ./secrets/tls/nats.key:/etc/nats/tls/nats.key:ro
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.10
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *default-logging
+    restart: unless-stopped
+
+  phantom-api:
+    build:
+      context: ./phantom
+      dockerfile: Dockerfile
+    profiles: ["core", "intelligence", "gpu", "observability", "compliance", "full"]
+    # Batch 3 validation: host-mounted TLS/NKey files are root-readable only.
+    user: "0:0"
+    # M3.2: No longer exposed directly — Caddy TLS proxy on :8008
+    expose:
+      - "8000"
+    environment:
+      - NATS_URL=tls://nats:4222
+      - PHANTOM_PORT=8000
+      # M3.1: NKey auth — seed injected from SOPS-encrypted .env
+      - NATS_NKEY_SEED=${PHANTOM_NKEY_SEED:-}
+      - NATS_NKEY_SEED_FILE=/run/secrets/phantom.nk
+      - NATS_CA_FILE=/etc/nats/tls/ca.crt
+      - NATS_CLIENT_CERT_FILE=/etc/nats/tls/client.crt
+      - NATS_CLIENT_KEY_FILE=/etc/nats/tls/client.key
+      # M3.4: Route all LLM calls through securellm-bridge
+      - SECURELLM_BRIDGE_URL=http://securellm-bridge:8080
+    env_file:
+      - .env
+    volumes:
+      - ./spectre/config/nkeys/phantom.nk:/run/secrets/phantom.nk:ro
+      - ./secrets/tls/ca.crt:/etc/nats/tls/ca.crt:ro
+      - ./secrets/tls/phantom-api.crt:/etc/nats/tls/client.crt:ro
+      - ./secrets/tls/phantom-api.key:/etc/nats/tls/client.key:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.11
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+
+  # M3.2: TLS reverse proxy for phantom-api
+  phantom-proxy:
+    image: caddy:2-alpine
+    profiles: ["core", "intelligence", "gpu", "observability", "compliance", "full"]
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./spectre/config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./secrets/tls/phantom-api.crt:/etc/caddy/tls/cert.crt:ro
+      - ./secrets/tls/phantom-api.key:/etc/caddy/tls/cert.key:ro
+      - ./secrets/tls/ca.crt:/etc/caddy/tls/ca.crt:ro
+    depends_on:
+      phantom-api:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.14
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "--no-check-certificate", "https://localhost:8008/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+
+  owasaka:
+    build:
+      context: ./owasaka
+      dockerfile: Dockerfile
+    profiles: ["core", "intelligence", "gpu", "observability", "compliance", "full"]
+    ports:
+      - "8080:8080"
+    environment:
+      - NATS_URL=tls://nats:4222
+      # M3.1: NKey auth — seed injected from SOPS-encrypted .env
+      - NATS_NKEY_SEED=${OWASAKA_NKEY_SEED:-}
+      - NATS_NKEY_SEED_FILE=/run/secrets/owasaka.nk
+      - NATS_CA_FILE=/etc/nats/tls/ca.crt
+      - NATS_CLIENT_CERT_FILE=/etc/nats/tls/client.crt
+      - NATS_CLIENT_KEY_FILE=/etc/nats/tls/client.key
+    env_file:
+      - .env
+    volumes:
+      - ./spectre/config/nkeys/owasaka.nk:/run/secrets/owasaka.nk:ro
+      - ./secrets/tls/ca.crt:/etc/nats/tls/ca.crt:ro
+      - ./secrets/tls/owasaka.crt:/etc/nats/tls/client.crt:ro
+      - ./secrets/tls/owasaka.key:/etc/nats/tls/client.key:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.12
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+
+  ai-agent-os:
+    build:
+      context: .
+      dockerfile: ai-agent-os/Dockerfile
+    profiles: ["core", "intelligence", "gpu", "observability", "compliance", "full"]
+    environment:
+      - NATS_URL=tls://nats:4222
+      # M3.1: NKey auth — seed injected from SOPS-encrypted .env
+      - NATS_NKEY_SEED=${AI_AGENT_OS_NKEY_SEED:-}
+      - NATS_NKEY_SEED_FILE=/run/secrets/ai-agent-os.nk
+      - NATS_CA_FILE=/etc/nats/tls/ca.crt
+      - NATS_CLIENT_CERT_FILE=/etc/nats/tls/client.crt
+      - NATS_CLIENT_KEY_FILE=/etc/nats/tls/client.key
+    env_file:
+      - .env
+    volumes:
+      - ./spectre/config/nkeys/ai-agent-os.nk:/run/secrets/ai-agent-os.nk:ro
+      - ./secrets/tls/ca.crt:/etc/nats/tls/ca.crt:ro
+      - ./secrets/tls/ai-agent-os.crt:/etc/nats/tls/client.crt:ro
+      - ./secrets/tls/ai-agent-os.key:/etc/nats/tls/client.key:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.13
+    logging: *default-logging
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # INTELLIGENCE — AI/ML services
+  # ──────────────────────────────────────────────
+
+  cerebro:
+    build:
+      context: ./cerebro
+      dockerfile: Dockerfile
+    profiles: ["intelligence", "full"]
+    ports:
+      - "8002:8000"
+    environment:
+      - NATS_URL=tls://nats:4222
+      - NATS_NKEY_SEED_FILE=/run/secrets/cerebro.nk
+      - NATS_CA_FILE=/etc/nats/tls/ca.crt
+      - NATS_CLIENT_CERT_FILE=/etc/nats/tls/client.crt
+      - NATS_CLIENT_KEY_FILE=/etc/nats/tls/client.key
+    env_file:
+      - .env
+    volumes:
+      - ./spectre/config/nkeys/cerebro.nk:/run/secrets/cerebro.nk:ro
+      - ./secrets/tls/ca.crt:/etc/nats/tls/ca.crt:ro
+      - ./secrets/tls/cerebro.crt:/etc/nats/tls/client.crt:ro
+      - ./secrets/tls/cerebro.key:/etc/nats/tls/client.key:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.20
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+
+  securellm-bridge:
+    build:
+      context: ./securellm-bridge
+      dockerfile: Dockerfile
+    profiles: ["intelligence", "full"]
+    ports:
+      - "8081:8080"
+    environment:
+      - NATS_URL=tls://nats:4222
+      - NATS_NKEY_SEED_FILE=/run/secrets/securellm-bridge.nk
+      - NATS_CA_FILE=/etc/nats/tls/ca.crt
+      - NATS_CLIENT_CERT_FILE=/etc/nats/tls/client.crt
+      - NATS_CLIENT_KEY_FILE=/etc/nats/tls/client.key
+    env_file:
+      - .env
+    volumes:
+      - ./spectre/config/nkeys/securellm-bridge.nk:/run/secrets/securellm-bridge.nk:ro
+      - ./secrets/tls/ca.crt:/etc/nats/tls/ca.crt:ro
+      - ./secrets/tls/securellm-bridge.crt:/etc/nats/tls/client.crt:ro
+      - ./secrets/tls/securellm-bridge.key:/etc/nats/tls/client.key:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.21
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+
+  ml-ops-api:
+    build:
+      context: ./ml-ops-api
+      dockerfile: Dockerfile
+    profiles: ["intelligence", "full"]
+    ports:
+      - "8083:8080"
+    environment:
+      - NATS_URL=nats://nats:4222
+    env_file:
+      - .env
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.22
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    logging: *default-logging
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # GPU — hardware-accelerated services
+  # ──────────────────────────────────────────────
+
+  spooknix:
+    build:
+      context: ./spooknix
+      dockerfile: Dockerfile
+    profiles: ["gpu", "full"]
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_SIZE=${MODEL_SIZE:-large-v3}
+      - HF_TOKEN=${HF_TOKEN:-}
+    env_file:
+      - .env
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.30
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    logging: *default-logging
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # OBSERVABILITY
+  # ──────────────────────────────────────────────
+
+  # NATS Prometheus exporter — converts /varz JSON → Prometheus format
+  nats-exporter:
+    image: natsio/prometheus-nats-exporter:0.14.0
+    profiles: ["observability", "full"]
+    command: ["-varz", "-connz", "-subz", "http://nats:8222"]
+    expose:
+      - "7777"
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.43
+    logging: *default-logging
+    restart: unless-stopped
+
+  ai-agent-metrics-bridge:
+    image: master-ai-agent-metrics-bridge:latest
+    build:
+      context: ./spectre/tools/ai-agent-metrics-bridge
+      dockerfile: Dockerfile
+    profiles: ["observability", "full"]
+    expose:
+      - "9101"
+    environment:
+      - NATS_URL=tls://nats:4222
+      - NATS_NKEY_SEED_FILE=/run/secrets/phantom-soc.nk
+      - NATS_CA_FILE=/etc/nats/tls/ca.crt
+      - NATS_CLIENT_CERT_FILE=/etc/nats/tls/client.crt
+      - NATS_CLIENT_KEY_FILE=/etc/nats/tls/client.key
+      - BRIDGE_PORT=9101
+    env_file:
+      - .env
+    volumes:
+      - ./spectre/config/nkeys/phantom-soc.nk:/run/secrets/phantom-soc.nk:ro
+      - ./secrets/tls/ca.crt:/etc/nats/tls/ca.crt:ro
+      - ./secrets/tls/ai-agent-os.crt:/etc/nats/tls/client.crt:ro
+      - ./secrets/tls/ai-agent-os.key:/etc/nats/tls/client.key:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.44
+    logging: *default-logging
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    profiles: ["observability", "full"]
+    user: "0:0"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./spectre/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./spectre/config/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - nats-exporter
+      - ai-agent-metrics-bridge
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.40
+    logging: *default-logging
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.3.3
+    profiles: ["observability", "full"]
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./spectre/config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./spectre/config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.41
+    logging: *default-logging
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.0.0
+    profiles: ["observability", "full"]
+    user: "0:0"
+    command: ["-config.file=/etc/loki/config.yml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./spectre/config/loki-config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.45
+    logging: *default-logging
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    profiles: ["observability", "full"]
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ./spectre/config/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.46
+    logging: *default-logging
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.55
+    profiles: ["observability", "full"]
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.42
+    logging: *default-logging
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # COMPLIANCE — Temporal + Postgres for neotron
+  # ──────────────────────────────────────────────
+
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    profiles: ["compliance", "full"]
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-voidnx}
+      - POSTGRES_DB=neotron
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.50
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *default-logging
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5.17
+    profiles: ["compliance", "full"]
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-voidnx}
+    volumes:
+      - neo4j-data:/data
+    networks:
+      spectre-net:
+        ipv4_address: 172.28.0.51
+    logging: *default-logging
+    restart: unless-stopped
+
+networks:
+  spectre-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  postgres-data:
+  neo4j-data:

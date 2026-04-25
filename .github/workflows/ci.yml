@@ -1,0 +1,376 @@
+name: Umbrella CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Execution depth"
+        required: true
+        default: quick
+        type: choice
+        options:
+          - quick
+          - full
+
+permissions:
+  contents: read
+
+concurrency:
+  group: umbrella-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LINUX_RUNNER: ubuntu-24.04
+
+jobs:
+  root-validation:
+    name: Root Validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Validate helper scripts
+        run: bash -n .github/scripts/materialize-umbrella.sh
+
+      - name: Evaluate umbrella flake
+        run: nix flake check --no-build
+
+  component-checks:
+    name: Component — ${{ matrix.repo }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: root-validation
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - repo: spectre
+            command: nix develop --command bash -lc 'cargo fmt -- --check && cargo clippy -- -D warnings && cargo test'
+          - repo: owasaka
+            command: nix develop --command bash -lc 'golangci-lint run && go test -race -coverprofile=coverage.out ./...'
+          - repo: phantom
+            command: nix develop --command bash -lc 'ruff check src/ && pytest --cov=phantom --cov-fail-under=70'
+          - repo: ai-agent-os
+            command: nix develop --command bash -lc 'cargo build && cargo test'
+          - repo: neoland
+            command: nix develop --command bash -lc 'cargo build && cargo test'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Materialize ${{ matrix.repo }}
+        env:
+          MATERIALIZE_REPOS: ${{ matrix.repo }}
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Run checks
+        working-directory: ${{ matrix.repo }}
+        run: |
+          nix flake check --no-build
+          ${{ matrix.command }}
+
+  repo-flake-checks:
+    name: Flake — ${{ matrix.repo }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    needs: root-validation
+
+    strategy:
+      fail-fast: false
+      matrix:
+        repo:
+          - cerebro
+          - securellm-bridge
+          - spooknix
+          - phantom-nx
+          - ml-ops-api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Materialize ${{ matrix.repo }}
+        env:
+          MATERIALIZE_REPOS: ${{ matrix.repo }}
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Evaluate flake
+        working-directory: ${{ matrix.repo }}
+        run: nix flake check --no-build
+
+  component-builds:
+    name: Build — ${{ matrix.repo }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    needs:
+      - component-checks
+      - repo-flake-checks
+
+    strategy:
+      fail-fast: false
+      matrix:
+        repo:
+          - spectre
+          - owasaka
+          - phantom
+          - ai-agent-os
+          - neoland
+          - cerebro
+          - securellm-bridge
+          - spooknix
+          - phantom-nx
+          - ml-ops-api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Materialize ${{ matrix.repo }}
+        env:
+          MATERIALIZE_REPOS: ${{ matrix.repo }}
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Build default package
+        working-directory: ${{ matrix.repo }}
+        run: nix build .#default --print-build-logs
+
+  sentinel-quick:
+    name: Sentinel Quick Integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    needs: root-validation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Materialize sentinel test workspace
+        env:
+          MATERIALIZE_REPOS: sentinel,phantom,cerebro,adr-ledger
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Link workspace as ~/master
+        run: |
+          rm -rf "$HOME/master"
+          ln -s "$GITHUB_WORKSPACE" "$HOME/master"
+
+      - name: Run quick integration suite
+        run: |
+          nix develop --command bash -lc '
+            cd sentinel
+            poetry install --no-interaction --no-root -E nats
+            mkdir -p reports
+            docker compose -f docker-compose.test.yml up -d
+            sleep 30
+            pytest test_comprehensive_integration.py \
+              -v -m "not slow" \
+              --junitxml=reports/junit-quick.xml \
+              --tb=short
+          '
+
+      - name: Upload quick integration artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-quick-artifacts
+          path: |
+            sentinel/reports/
+
+      - name: Capture service logs
+        if: failure()
+        run: docker compose -f sentinel/docker-compose.test.yml logs > /tmp/sentinel-quick.log || true
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-quick-logs
+          path: /tmp/sentinel-quick.log
+
+      - name: Cleanup quick integration stack
+        if: always()
+        run: docker compose -f sentinel/docker-compose.test.yml down -v
+
+  umbrella-live:
+    name: Umbrella Smoke${{ (github.event_name == 'push' || github.event.inputs.mode == 'full') && ' + E2E' || '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    needs:
+      - component-builds
+      - sentinel-quick
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Materialize live validation workspace
+        env:
+          MATERIALIZE_REPOS: sentinel,spectre,phantom,owasaka,phantom-soc
+          MATERIALIZE_AI_AGENT_OS: "1"
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Link workspace as ~/master
+        run: |
+          rm -rf "$HOME/master"
+          ln -s "$GITHUB_WORKSPACE" "$HOME/master"
+
+      - name: Prepare TLS materials
+        run: nix develop --command bash -lc 'cd sentinel && bash scripts/rotate-tls.sh'
+
+      - name: Prepare NKey materials
+        run: nix run .#nkeys-gen
+
+      - name: Start core stack
+        run: nix run .#dev-stack
+
+      - name: Run smoke test
+        run: nix run .#smoke-test
+
+      - name: Run Batch 2 live E2E
+        if: ${{ github.event_name == 'push' || github.event.inputs.mode == 'full' }}
+        run: nix run .#batch-2-e2e
+
+      - name: Capture live validation logs
+        if: always()
+        run: |
+          docker compose ps --all
+          docker compose logs --tail=200 > /tmp/umbrella-live.log || true
+
+      - name: Upload live validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: umbrella-live-logs
+          path: /tmp/umbrella-live.log
+
+      - name: Cleanup live validation stack
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  packaging-linux:
+    name: Packaging Smoke — Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    needs:
+      - component-builds
+      - sentinel-quick
+    if: ${{ github.event_name == 'push' || github.event.inputs.mode == 'full' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Install packaging dependencies
+        run: |
+          gem install --no-document fpm
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      - name: Materialize packaging workspace
+        env:
+          MATERIALIZE_REPOS: sentinel,ai-agent-os,securellm-bridge,phantom-nx,owasaka,phantom,cerebro,spooknix
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Build Debian packages
+        run: VERSION=0.0.0-ci bash sentinel/packaging/deb/build.sh
+
+      - name: Build RPM packages
+        run: VERSION=0.0.0-ci bash sentinel/packaging/rpm/build.sh
+
+      - name: Upload Linux packaging artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaging-linux-artifacts
+          path: |
+            sentinel/dist/*.deb
+            sentinel/dist/*.rpm
+
+  packaging-macos:
+    name: Packaging Smoke — macOS
+    runs-on: macos-15
+    timeout-minutes: 45
+    needs:
+      - component-builds
+      - sentinel-quick
+    if: ${{ github.event_name == 'push' || github.event.inputs.mode == 'full' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Materialize packaging workspace
+        env:
+          MATERIALIZE_REPOS: sentinel,ai-agent-os,securellm-bridge,phantom-nx
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Build macOS artifacts
+        run: VERSION=0.0.0-ci bash sentinel/packaging/macos/build.sh
+
+      - name: Upload macOS packaging artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaging-macos-artifacts
+          path: sentinel/dist/macos/
+
+  packaging-windows:
+    name: Packaging Smoke — Windows
+    runs-on: windows-2025
+    timeout-minutes: 45
+    needs:
+      - component-builds
+      - sentinel-quick
+    if: ${{ github.event_name == 'push' || github.event.inputs.mode == 'full' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Materialize packaging workspace
+        shell: bash
+        env:
+          MATERIALIZE_REPOS: sentinel,ai-agent-os,securellm-bridge,phantom-nx
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Build Windows artifacts
+        shell: pwsh
+        run: |
+          $env:VERSION = "0.0.0-ci"
+          $env:WORKSPACE_ROOT = (Resolve-Path ".").Path
+          .\sentinel\packaging\windows\build.ps1
+
+      - name: Upload Windows packaging artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaging-windows-artifacts
+          path: sentinel/dist/windows/

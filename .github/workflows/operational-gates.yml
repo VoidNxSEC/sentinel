@@ -1,0 +1,288 @@
+name: Operational Gates
+
+on:
+  workflow_dispatch:
+    inputs:
+      gate:
+        description: "Which operational gate set to run"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - security
+          - secrets
+          - metrics
+          - logging
+          - alerting
+      include_ai_agent_os:
+        description: "Materialize ai-agent-os and run dependent gates"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operational-gates-${{ inputs.gate }}-${{ inputs.include_ai_agent_os }}
+  cancel-in-progress: false
+
+jobs:
+  gate-5-secrets:
+    name: Gate 5 Secrets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    if: ${{ inputs.gate == 'all' || inputs.gate == 'secrets' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Materialize umbrella workspace
+        env:
+          MATERIALIZE_REPOS: sentinel,spectre
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Link workspace as ~/master
+        run: |
+          rm -rf "$HOME/master"
+          ln -s "$GITHUB_WORKSPACE" "$HOME/master"
+
+      - name: Run Gate 5
+        run: nix run .#gate-5-secrets
+
+  batch-3-security:
+    name: Batch 3 Security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    if: ${{ inputs.gate == 'all' || inputs.gate == 'security' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Materialize umbrella workspace
+        env:
+          MATERIALIZE_REPOS: sentinel,spectre,phantom,owasaka
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Link workspace as ~/master
+        run: |
+          rm -rf "$HOME/master"
+          ln -s "$GITHUB_WORKSPACE" "$HOME/master"
+
+      - name: Prepare TLS materials
+        run: nix develop --command bash -lc 'cd sentinel && bash scripts/rotate-tls.sh'
+
+      - name: Prepare NKey materials
+        run: nix run .#nkeys-gen
+
+      - name: Start core stack
+        run: docker compose up -d nats phantom-api phantom-proxy owasaka
+
+      - name: Run Batch 3
+        run: nix run .#batch-3-security
+
+      - name: Capture core state
+        if: always()
+        run: |
+          docker compose ps --all
+          docker compose logs --tail=200 nats phantom-api phantom-proxy owasaka > /tmp/batch-3-core.log || true
+
+      - name: Upload Batch 3 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-3-security-artifacts
+          path: /tmp/batch-3-core.log
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  batch-4-metrics:
+    name: Batch 4 Metrics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    if: ${{ inputs.include_ai_agent_os && (inputs.gate == 'all' || inputs.gate == 'metrics') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Materialize umbrella workspace
+        env:
+          MATERIALIZE_REPOS: sentinel,spectre,phantom,owasaka
+          MATERIALIZE_AI_AGENT_OS: "1"
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Link workspace as ~/master
+        run: |
+          rm -rf "$HOME/master"
+          ln -s "$GITHUB_WORKSPACE" "$HOME/master"
+
+      - name: Prepare TLS materials
+        run: nix develop --command bash -lc 'cd sentinel && bash scripts/rotate-tls.sh'
+
+      - name: Prepare NKey materials
+        run: nix run .#nkeys-gen
+
+      - name: Normalize observability config permissions
+        run: |
+          chmod 644 \
+            spectre/prometheus.yml \
+            spectre/config/alerts.yml \
+            spectre/config/grafana/provisioning/datasources/prometheus.yml \
+            spectre/config/grafana/provisioning/datasources/loki.yml
+
+      - name: Start core and observability
+        run: docker compose up -d nats phantom-api phantom-proxy owasaka ai-agent-os nats-exporter ai-agent-metrics-bridge prometheus grafana
+
+      - name: Run Batch 4 Metrics
+        run: nix run .#batch-4-metrics
+
+      - name: Capture metrics state
+        if: always()
+        run: |
+          docker compose ps --all
+          docker compose logs --tail=200 prometheus grafana nats-exporter ai-agent-os ai-agent-metrics-bridge > /tmp/batch-4-metrics.log || true
+          curl -fsS http://localhost:9090/api/v1/targets > /tmp/prometheus-targets.json || true
+
+      - name: Upload Metrics artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-4-metrics-artifacts
+          path: |
+            /tmp/batch-4-metrics.log
+            /tmp/prometheus-targets.json
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  batch-4-logging:
+    name: Batch 4 Logging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    if: ${{ inputs.gate == 'all' || inputs.gate == 'logging' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Materialize umbrella workspace
+        env:
+          MATERIALIZE_REPOS: sentinel,spectre,phantom,owasaka
+          MATERIALIZE_AI_AGENT_OS: ${{ inputs.include_ai_agent_os && '1' || '0' }}
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Link workspace as ~/master
+        run: |
+          rm -rf "$HOME/master"
+          ln -s "$GITHUB_WORKSPACE" "$HOME/master"
+
+      - name: Prepare TLS materials
+        run: nix develop --command bash -lc 'cd sentinel && bash scripts/rotate-tls.sh'
+
+      - name: Prepare NKey materials
+        run: nix run .#nkeys-gen
+
+      - name: Normalize observability config permissions
+        run: |
+          chmod 644 \
+            spectre/prometheus.yml \
+            spectre/config/alerts.yml \
+            spectre/config/loki-config.yml \
+            spectre/config/promtail-config.yml \
+            spectre/config/grafana/provisioning/datasources/prometheus.yml \
+            spectre/config/grafana/provisioning/datasources/loki.yml
+
+      - name: Start core and observability
+        run: docker compose up -d nats phantom-api phantom-proxy owasaka nats-exporter prometheus grafana loki promtail
+
+      - name: Run Batch 4 Logging
+        run: nix run .#batch-4-logging
+
+      - name: Capture logging state
+        if: always()
+        run: |
+          docker compose ps --all
+          docker compose logs --tail=200 > /tmp/batch-4-logging.log || true
+
+      - name: Upload Logging artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-4-logging-artifacts
+          path: /tmp/batch-4-logging.log
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  batch-4-alerting:
+    name: Batch 4 Alerting
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    if: ${{ inputs.include_ai_agent_os && (inputs.gate == 'all' || inputs.gate == 'alerting') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Materialize umbrella workspace
+        env:
+          MATERIALIZE_REPOS: sentinel,spectre,phantom,owasaka
+          MATERIALIZE_AI_AGENT_OS: "1"
+        run: bash .github/scripts/materialize-umbrella.sh
+
+      - name: Link workspace as ~/master
+        run: |
+          rm -rf "$HOME/master"
+          ln -s "$GITHUB_WORKSPACE" "$HOME/master"
+
+      - name: Prepare TLS materials
+        run: nix develop --command bash -lc 'cd sentinel && bash scripts/rotate-tls.sh'
+
+      - name: Prepare NKey materials
+        run: nix run .#nkeys-gen
+
+      - name: Normalize observability config permissions
+        run: |
+          chmod 644 \
+            spectre/prometheus.yml \
+            spectre/config/alerts.yml \
+            spectre/config/loki-config.yml \
+            spectre/config/promtail-config.yml \
+            spectre/config/grafana/provisioning/datasources/prometheus.yml \
+            spectre/config/grafana/provisioning/datasources/loki.yml
+
+      - name: Start core and observability
+        run: docker compose up -d nats phantom-api phantom-proxy owasaka ai-agent-os nats-exporter ai-agent-metrics-bridge prometheus grafana loki promtail
+
+      - name: Run Batch 4 Alerting
+        run: nix run .#batch-4-alerting
+
+      - name: Capture alerting state
+        if: always()
+        run: |
+          docker compose ps --all
+          docker compose logs --tail=200 prometheus ai-agent-os > /tmp/batch-4-alerting.log || true
+          curl -fsS http://localhost:9090/api/v1/rules > /tmp/prometheus-rules.json || true
+          curl -fsS http://localhost:9090/api/v1/alerts > /tmp/prometheus-alerts.json || true
+
+      - name: Upload Alerting artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-4-alerting-artifacts
+          path: |
+            /tmp/batch-4-alerting.log
+            /tmp/prometheus-rules.json
+            /tmp/prometheus-alerts.json
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v --remove-orphans
