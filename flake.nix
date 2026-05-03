@@ -263,7 +263,7 @@
             jq
 
             # Code quality
-            nodePackages.prettier
+            prettier
 
             # Optional: Neoland binary (if available)
             # neoland.packages.${system}.default
